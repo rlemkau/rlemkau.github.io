@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Services | ABC Fitness Studio</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <header>
+        <nav aria-label="Main navigation">
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="about.html">About Us</a></li>
+                <li><a href="services.html">Services</a></li>
+                <li><a href="schedule.html">Schedule</a></li>
+                <li><a href="contact.html">Contact</a></li>
+                <li><a href="cart.html" id="cart-link">Cart (0)</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Services Section -->
+    <section id="services">
+        <h2>Our Services & Shop</h2>
+
+        <!-- Individual Yoga Session -->
+        <div class="service">
+            <img src="images/Client2_IndividualYoga.png" alt="Yoga session image">
+            <h3>Individual Yoga Session</h3>
+            <p>One-on-one coaching with a certified yoga instructor. Perfect for personalized attention.</p>
+            <p><strong>Price: $50</strong></p>
+            <button onclick="addToCart('Individual Yoga Session', 50)">Add to Cart</button>
+        </div>
+
+        <!-- Group Yoga Session -->
+        <div class="service">
+            <img src="images/Client2_GroupYoga.png" alt="Group yoga session image">
+            <h3>Group Yoga Session</h3>
+            <p>Join a group of like-minded individuals for a relaxing yoga session.</p>
+            <p><strong>Price: $20</strong></p>
+            <button onclick="addToCart('Group Yoga Session', 20)">Add to Cart</button>
+        </div>
+
+        <!-- Individual Pilates Session -->
+        <div class="service">
+            <img src="images/Client2_IndividualPilates.png" alt="Pilates session image">
+            <h3>Individual Pilates Session</h3>
+            <p>Private Pilates sessions to strengthen your core and improve flexibility.</p>
+            <p><strong>Price: $60</strong></p>
+            <button onclick="addToCart('Individual Pilates Session', 60)">Add to Cart</button>
+        </div>
+
+        <!-- Group Pilates Session -->
+        <div class="service">
+            <img src="images/Client2_GroupPilates.png" alt="Group pilates session image">
+            <h3>Group Pilates Session</h3>
+            <p>A fun group session focused on strengthening and flexibility for all levels.</p>
+            <p><strong>Price: $30</strong></p>
+            <button onclick="addToCart('Group Pilates Session', 30)">Add to Cart</button>
+        </div>
+
+        <!-- Individual Kickboxing Session -->
+        <div class="service">
+            <img src="images/Client2_IndividualKickboxing.png" alt="Kickboxing session image">
+            <h3>Individual Kickboxing Session</h3>
+            <p>Get in shape with a one-on-one kickboxing session tailored just for you.</p>
+            <p><strong>Price: $70</strong></p>
+            <button onclick="addToCart('Individual Kickboxing Session', 70)">Add to Cart</button>
+        </div>
+
+        <!-- Group Kickboxing Session -->
+        <div class="service">
+            <img src="images/Client2_GroupKickboxing.png" alt="Group kickboxing session image">
+            <h3>Group Kickboxing Session</h3>
+            <p>Join a high-energy kickboxing class and burn calories while having fun!</p>
+            <p><strong>Price: $35</strong></p>
+            <button onclick="addToCart('Group Kickboxing Session', 35)">Add to Cart</button>
+        </div>
+
+        <!-- Yoga Mat -->
+        <div class="service">
+            <img src="images/Client2_YogaMat.png" alt="Yoga mat image">
+            <h3>Yoga Mat</h3>
+            <p>Premium quality mat for your yoga practice, providing extra comfort and support.</p>
+            <p><strong>Price: $20</strong></p>
+            <button onclick="addToCart('Yoga Mat', 20)">Add to Cart</button>
+        </div>
+
+        <!-- Water Bottle -->
+        <div class="service">
+            <img src="images/Client2_WaterBottle.png" alt="Water bottle image">
+            <h3>Water Bottle</h3>
+            <p>Stay hydrated during your workout with our fitness water bottle.</p>
+            <p><strong>Price: $12</strong></p>
+            <button onclick="addToCart('Water Bottle', 12)">Add to Cart</button>
+        </div>
+
+        <!-- T-shirt -->
+        <div class="service">
+            <img src="images/Client2_TeeShirt.png" alt="Fitness T-shirt image">
+            <h3>Fitness T-shirt</h3>
+            <p>Comfortable, breathable T-shirt for all your workout sessions.</p>
+            <p><strong>Price: $25</strong></p>
+            <button onclick="addToCart('T-shirt', 25)">Add to Cart</button>
+        </div>
+    </section>
+
+    <!-- Cart Section -->
+    <section id="cart" style="display:none;">
+        <h2>Your Cart</h2>
+        <div id="cart-items">
+            <!-- Cart items will appear here -->
+        </div>
+        <p id="cart-total">Total: $0</p>
+        <button onclick="checkout()">Proceed to Checkout</button>
+    </section>
+
+    <footer>
+        <p>&copy; 2025 ABC Fitness Studio</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
