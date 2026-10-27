@@ -231,13 +231,35 @@
           </select>
         </label>
         <label class="field">
-          <span>Voice server URL (optional)</span>
+          <span>Fish relay URL (optional)</span>
           <input id="setFishProxy" placeholder="https://vex-voice.yourname.workers.dev" spellcheck="false">
-          <small>Leave blank for Fish Audio. Use a relay, or your own PC (e.g. <code>http://localhost:8787</code>) for free local voice. See <code>voice-relay/README.md</code>.</small>
+          <small>Leave blank. Only needed if Fish Audio blocks direct browser calls; see <code>voice-relay/README.md</code>.</small>
+        </label>
+        <label class="field">
+          <span>Your PC's voice server (same voice, offline)</span>
+          <input id="setPcVoiceUrl" placeholder="http://localhost:8787" spellcheck="false">
+          <small>Optional. If Fish Audio can't be reached (or you're offline), VEX uses your voice running on your PC with Fish Speech. Setup: <code>voice-relay/README.md</code>.</small>
+        </label>
+        <label class="field">
+          <span>Voice name on your PC</span>
+          <input id="setPcVoiceId" placeholder="vex" spellcheck="false">
         </label>
         <div class="row">
           <button type="button" id="testVoiceBtn" class="ghost">Test voice</button>
           <span id="voiceState" class="muted"></span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Sync between devices</legend>
+        <label class="field">
+          <span>GitHub sync token</span>
+          <input id="setGithubToken" type="password" placeholder="github_pat_… or ghp_…" spellcheck="false">
+          <small>Keeps memories, chat and settings the same on your phone and computer, saved in a private Gist on your GitHub. Make a token at github.com/settings/tokens with only the <b>gist</b> permission, and paste the same token on each device. API keys are never synced.</small>
+        </label>
+        <div class="row">
+          <button type="button" id="syncNowBtn" class="ghost">Sync now</button>
+          <span id="syncState" class="muted">Off</span>
         </div>
       </fieldset>
 

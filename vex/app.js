@@ -36,15 +36,143 @@ const settings = Object.assign({
   fishVoice: "",
   fishModel: "s2.1-pro-free",
   fishProxy: "",
+  pcVoiceUrl: "",
+  pcVoiceId: "vex",
+  githubToken: "",
 }, store.get("settings", {}));
 let sinceReflect = store.get("sinceReflect", 0);
 
 let chat = store.get("chat", []);          // [{role, text, via, sources, learned}]
 let memory = store.get("memory", []);      // [{id, kind: "me"|"world", text, source, at}]
 
-const saveSettings = () => store.set("settings", settings);
-const saveChat = () => store.set("chat", chat.slice(-200));
-const saveMemory = () => store.set("memory", memory);
+// Only real changes count as "newer" for sync (API keys and tokens never sync, so they don't count).
+const publicSettings = () => JSON.stringify(Object.fromEntries(Object.entries(settings).filter(([k]) => !SECRET.includes(k))));
+let lastPublic = null;
+const saveSettings = () => {
+  store.set("settings", settings);
+  const now = publicSettings();
+  if (lastPublic !== null && now !== lastPublic) { sync.settingsAt = Date.now(); store.set("settingsAt", sync.settingsAt); markDirty(); }
+  lastPublic = now;
+};
+const saveChat = () => { store.set("chat", chat.slice(-200)); markDirty(); };
+const saveMemory = () => { store.set("memory", memory); markDirty(); };
+// ---------- Sync across devices (private GitHub Gist) ----------
+// Memories, chat and settings sync between your phone and computer. Changes made offline wait and
+// sync automatically when you're back online. API keys never leave the device they were typed on.
+const SECRET = ["apiKey", "fishKey", "githubToken"];
+const SYNC_FILE = "vex-sync.json";
+const sync = {
+  gistId: store.get("gistId", ""),
+  tomb: store.get("tomb", {}),            // deleted memory ids → when
+  clearedAt: store.get("clearedAt", 0),   // chat cleared before this time
+  settingsAt: store.get("settingsAt", 0),
+  dirty: store.get("syncDirty", false),
+  timer: null, running: false, last: store.get("lastSync", 0), error: "",
+};
+const msgKey = (m) => `${m.role}:${m.at}`;
+
+function markDirty() {
+  sync.dirty = true; store.set("syncDirty", true);
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(syncNow, 4000);
+}
+
+function snapshot() {
+  const s = Object.fromEntries(Object.entries(settings).filter(([k]) => !SECRET.includes(k)));
+  const lite = chat.slice(-150).map(({ thoughts, ...m }) => ({ ...m, files: m.files?.map(({ preview, ...f }) => f) }));
+  return { app: "vex", v: 1, at: Date.now(), settings: s, settingsAt: sync.settingsAt, memory, tomb: sync.tomb, chat: lite, clearedAt: sync.clearedAt };
+}
+
+function mergeRemote(r) {
+  let changed = false;
+  if (r.settingsAt > sync.settingsAt && r.settings) {
+    const keep = Object.fromEntries(SECRET.map((k) => [k, settings[k]]));
+    Object.assign(settings, r.settings, keep);
+    sync.settingsAt = r.settingsAt; store.set("settingsAt", sync.settingsAt);
+    store.set("settings", settings);
+    lastPublic = publicSettings();
+    changed = true;
+  }
+  for (const [id, at] of Object.entries(r.tomb || {})) if (!sync.tomb[id] || sync.tomb[id] < at) sync.tomb[id] = at;
+  store.set("tomb", sync.tomb);
+  const mem = new Map(memory.map((m) => [m.id, m]));
+  for (const m of r.memory || []) if (!mem.has(m.id)) { mem.set(m.id, m); changed = true; }
+  const before = memory.length;
+  memory = [...mem.values()].filter((m) => !sync.tomb[m.id]).sort((a, b) => a.at - b.at);
+  if (memory.length !== before) changed = true;
+  store.set("memory", memory);
+
+  if ((r.clearedAt || 0) > sync.clearedAt) { sync.clearedAt = r.clearedAt; store.set("clearedAt", sync.clearedAt); changed = true; }
+  const msgs = new Map(chat.map((m) => [msgKey(m), m]));
+  for (const m of r.chat || []) if (!msgs.has(msgKey(m))) { msgs.set(msgKey(m), m); changed = true; }
+  const n = chat.length;
+  chat = [...msgs.values()].filter((m) => (m.at || 0) > sync.clearedAt).sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-200);
+  if (chat.length !== n) changed = true;
+  store.set("chat", chat);
+  return changed;
+}
+
+async function gh(path, opts = {}) {
+  const res = await fetch("https://api.github.com" + path, {
+    ...opts,
+    headers: { "Authorization": "Bearer " + settings.githubToken, "Accept": "application/vnd.github+json", "Content-Type": "application/json", ...(opts.headers || {}) },
+  });
+  if (res.status === 401) throw new Error("GitHub rejected the sync token. Check it in Settings → Sync.");
+  if (res.status === 404 && path.startsWith("/gists/")) return null;
+  if (!res.ok) throw new Error(`GitHub error ${res.status}`);
+  return res.json();
+}
+
+async function findOrCreateGist() {
+  if (sync.gistId) return sync.gistId;
+  for (let page = 1; page <= 5; page++) {
+    const list = await gh(`/gists?per_page=100&page=${page}`);
+    const hit = list?.find((g) => g.files?.[SYNC_FILE]);
+    if (hit) { sync.gistId = hit.id; break; }
+    if (!list || list.length < 100) break;
+  }
+  if (!sync.gistId) {
+    const g = await gh("/gists", { method: "POST", body: JSON.stringify({ description: "VEX sync (private)", public: false, files: { [SYNC_FILE]: { content: JSON.stringify(snapshot()) } } }) });
+    sync.gistId = g.id;
+  }
+  store.set("gistId", sync.gistId);
+  return sync.gistId;
+}
+
+async function syncNow() {
+  if (!settings.githubToken || !navigator.onLine || sync.running) return;
+  sync.running = true;
+  setSyncStatus("Syncing…");
+  try {
+    const id = await findOrCreateGist();
+    let g = await gh(`/gists/${id}`);
+    if (!g) { sync.gistId = ""; store.set("gistId", ""); g = await gh(`/gists/${await findOrCreateGist()}`); }
+    const f = g.files?.[SYNC_FILE];
+    let remote = null;
+    if (f) {
+      const text = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+      try { remote = JSON.parse(text); } catch {}
+    }
+    const changed = remote ? mergeRemote(remote) : false;
+    if (changed && !busy) { render(); updateModeUI(); updateVoiceUI(); $("#modeSel").value = settings.thinkMode; $("#thinkSel").value = settings.deepThink; }
+    const out = JSON.stringify(snapshot());
+    if (sync.dirty || changed || !remote) {
+      await gh(`/gists/${sync.gistId}`, { method: "PATCH", body: JSON.stringify({ files: { [SYNC_FILE]: { content: out } } }) });
+    }
+    sync.dirty = false; store.set("syncDirty", false);
+    sync.last = Date.now(); store.set("lastSync", sync.last);
+    sync.error = "";
+    setSyncStatus("Synced " + new Date(sync.last).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+  } catch (e) {
+    console.warn("sync failed", e);
+    sync.error = e.message;
+    setSyncStatus(e instanceof TypeError ? "Offline. Will sync when you're back online." : e.message);
+  } finally { sync.running = false; }
+}
+
+function setSyncStatus(t) { const el = document.getElementById("syncState"); if (el) el.textContent = t; }
+
+
 
 // ---------- Personality ----------
 const INTENSITY = {
@@ -460,7 +588,7 @@ function speakable(text) {
 }
 
 const voiceWanted = (force) => force || settings.voiceOn || call.on;
-const useFish = () => settings.fishKey && navigator.onLine;
+const useFish = () => (settings.fishKey && navigator.onLine) || !!settings.pcVoiceUrl;
 
 function stopVoice() {
   voiceQ.gen++;
@@ -494,12 +622,27 @@ function speakBuiltIn(text) {
   });
 }
 
+// Your permanent voice: Fish Audio online, then the same voice on your PC (works offline), then built-in.
 async function fishBlob(text) {
-  const url = (settings.fishProxy || "https://api.fish.audio").replace(/\/+$/, "") + "/v1/tts";
-  const res = await fetch(url, {
+  let firstErr = null;
+  if (settings.fishKey && navigator.onLine) {
+    try { return await ttsRequest(settings.fishProxy || "https://api.fish.audio", settings.fishKey, settings.fishModel, settings.fishVoice, text); }
+    catch (e) { firstErr = e; }
+  }
+  if (settings.pcVoiceUrl) {
+    try { return await ttsRequest(settings.pcVoiceUrl, "local", null, settings.pcVoiceId || "vex", text); }
+    catch (e) { firstErr = firstErr || e; }
+  }
+  throw firstErr || new Error("No voice server available");
+}
+
+async function ttsRequest(base, key, model, voice, text) {
+  const headers = { "Authorization": "Bearer " + key, "Content-Type": "application/json" };
+  if (model) headers.model = model;
+  const res = await fetch(base.replace(/\/+$/, "") + "/v1/tts", {
     method: "POST",
-    headers: { "Authorization": "Bearer " + settings.fishKey, "Content-Type": "application/json", "model": settings.fishModel },
-    body: JSON.stringify({ text, reference_id: settings.fishVoice || undefined, format: "mp3", latency: call.on ? "low" : "balanced" }),
+    headers,
+    body: JSON.stringify({ text, reference_id: voice || undefined, format: "mp3", latency: call.on ? "low" : "balanced" }),
   });
   if (!res.ok) {
     let msg = res.statusText;
@@ -1002,7 +1145,7 @@ async function send(text, { voice = false } = {}) {
   currentAbort = null;
   fillBot(el, bot);
   if (!bot.error) {
-    chat.push(bot); saveChat();
+    bot.at = Date.now(); chat.push(bot); saveChat();
     // Every 6 exchanges, VEX quietly reflects on how you think.
     sinceReflect++; store.set("sinceReflect", sinceReflect);
     if (sinceReflect >= 6) {
@@ -1096,6 +1239,10 @@ $("#settingsBtn").addEventListener("click", () => {
   $("#setFishVoice").value = settings.fishVoice;
   $("#setFishModel").value = settings.fishModel;
   $("#setFishProxy").value = settings.fishProxy;
+  $("#setPcVoiceUrl").value = settings.pcVoiceUrl;
+  $("#setPcVoiceId").value = settings.pcVoiceId;
+  $("#setGithubToken").value = settings.githubToken;
+  setSyncStatus(settings.githubToken ? (sync.error || (sync.last ? "Synced " + new Date(sync.last).toLocaleString() : "Not synced yet")) : "Off");
   $("#voiceState").textContent = "";
   sel.value = settings.localModel;
   refreshCacheState();
@@ -1120,8 +1267,15 @@ function readSettings() {
   settings.fishVoice = $("#setFishVoice").value.trim();
   settings.fishModel = $("#setFishModel").value;
   settings.fishProxy = $("#setFishProxy").value.trim();
+  settings.pcVoiceUrl = $("#setPcVoiceUrl").value.trim();
+  settings.pcVoiceId = $("#setPcVoiceId").value.trim() || "vex";
+  const tokenChanged = settings.githubToken !== $("#setGithubToken").value.trim();
+  settings.githubToken = $("#setGithubToken").value.trim();
+  // A newly connected device takes on the settings already saved in sync.
+  if (tokenChanged) { sync.gistId = ""; store.set("gistId", ""); sync.settingsAt = 0; store.set("settingsAt", 0); }
   saveSettings(); updateModeUI(); updateVoiceUI();
   if (showChanged || bsChanged) render();
+  if (tokenChanged && settings.githubToken) syncNow();
 }
 $("#settings").addEventListener("close", readSettings);
 sel.addEventListener("change", () => { readSettings(); refreshCacheState(); });
@@ -1135,15 +1289,17 @@ $("#testVoiceBtn").addEventListener("click", async () => {
   readSettings();
   $("#voiceState").textContent = "Speaking…";
   const r = await speak(`Hello, ${settings.name}. I've been looking forward to disagreeing with you.`, { force: true });
-  $("#voiceState").textContent = r.via === "fish" ? "Fish Audio voice working ✓" : r.error ? "Fish failed, used built-in voice" : "Built-in voice (add a Fish key for your custom voice)";
+  $("#voiceState").textContent = r.via === "fish" ? (settings.fishKey && navigator.onLine ? "Fish Audio voice working ✓" : "PC voice working ✓") : r.error ? "Fish failed, used built-in voice" : "Built-in voice (add a Fish key for your custom voice)";
 });
 $("#voiceBtn").addEventListener("click", () => {
   settings.voiceOn = !settings.voiceOn;
   if (!settings.voiceOn) stopVoice();
   saveSettings(); updateVoiceUI();
 });
+$("#syncNowBtn").addEventListener("click", () => { readSettings(); syncNow(); });
 $("#clearChatBtn").addEventListener("click", () => {
   if (!confirm("Clear the conversation? (VEX keeps its memories.)")) return;
+  sync.clearedAt = Date.now(); store.set("clearedAt", sync.clearedAt);
   chat = []; saveChat(); render(); $("#settings").close();
 });
 
@@ -1169,7 +1325,7 @@ function renderMemory() {
     const sm = document.createElement("small");
     sm.textContent = new Date(m.at).toLocaleDateString() + (m.source ? " · " + m.source : "");
     li.querySelector("span").appendChild(sm);
-    li.querySelector("button").onclick = () => { memory = memory.filter((x) => x.id !== m.id); saveMemory(); renderMemory(); };
+    li.querySelector("button").onclick = () => { sync.tomb[m.id] = Date.now(); store.set("tomb", sync.tomb); memory = memory.filter((x) => x.id !== m.id); saveMemory(); renderMemory(); };
     list.appendChild(li);
   }
 }
@@ -1186,7 +1342,7 @@ $("#memNew").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.pre
 
 // Backup / restore (API key is never included)
 $("#memExport").addEventListener("click", () => {
-  const { apiKey, fishKey, ...safeSettings } = settings;
+  const { apiKey, fishKey, githubToken, ...safeSettings } = settings;
   const blob = new Blob([JSON.stringify({ app: "vex", version: 1, exported: new Date().toISOString(), settings: safeSettings, memory, chat }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1203,14 +1359,16 @@ $("#memImport").addEventListener("change", async (e) => {
     const known = new Set(memory.map((m) => m.kind + "|" + m.text.toLowerCase()));
     for (const m of data.memory || []) if (!known.has(m.kind + "|" + m.text.toLowerCase())) memory.push(m);
     if (Array.isArray(data.chat) && (!chat.length || confirm("Replace the current conversation with the one in the backup?"))) chat = data.chat;
-    if (data.settings) Object.assign(settings, data.settings, { apiKey: settings.apiKey, fishKey: settings.fishKey });
+    if (data.settings) Object.assign(settings, data.settings, { apiKey: settings.apiKey, fishKey: settings.fishKey, githubToken: settings.githubToken });
     saveMemory(); saveChat(); saveSettings(); render(); renderMemory(); updateModeUI();
     alert("Restored. VEX remembers everything again.");
   } catch (err) { alert("Couldn't restore: " + err.message); }
   e.target.value = "";
 });
 
-window.addEventListener("online", updateModeUI);
+window.addEventListener("online", () => { updateModeUI(); syncNow(); });
+setInterval(() => { if (document.visibilityState === "visible") syncNow(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") syncNow(); });
 window.addEventListener("offline", updateModeUI);
 
 // Seed the one thing VEX should always know.
@@ -1225,3 +1383,7 @@ if ("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up the voi
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW failed", e));
 }
+
+// Pull anything new from your other devices on startup.
+lastPublic = publicSettings();
+syncNow();
