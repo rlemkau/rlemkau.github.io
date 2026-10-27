@@ -322,3 +322,37 @@ body.dropping .composer { border-color: var(--accent); box-shadow: 0 0 0 3px col
   .core.huge { width: 150px; height: 150px; }
   .tool { font-size: 12.5px; }
 }
+
+/* Dropdown menus: dark and readable everywhere (Windows draws them white by default) */
+select option, select optgroup { background: #111620; color: #e8ecf2; }
+select optgroup { font-weight: 700; color: #8691a4; }
+
+/* Reply action buttons */
+button.chip.act { cursor: pointer; font: inherit; font-size: 12px; color: var(--text); }
+button.chip.act:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Daily teaser */
+.teaser {
+  margin-top: 16px; background: color-mix(in srgb, var(--accent2) 14%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent2) 45%, var(--line)); color: var(--text);
+  border-radius: 999px; padding: 10px 18px; font-size: 14px; cursor: pointer; font-weight: 600;
+}
+.teaser:hover { border-color: var(--accent2); }
+
+/* Brain stats */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+.tile b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.tile span { color: var(--muted); font-size: 12px; }
+.spark { width: 100%; height: 90px; margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; box-sizing: border-box; }
+.verdict { font-weight: 600; margin: 6px 0 0; }
+#statsBody h4 { margin: 16px 0 8px; font-size: 14px; }
+.traps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.traps li { display: flex; justify-content: space-between; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; text-transform: capitalize; }
+@media (max-width: 520px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 430px) {
+  .brand h1 { display: none; }
+  .icon-btn { width: 32px; }
+  .status { gap: 2px; }
+  .pill { padding: 6px 10px; font-size: 12px; }
+}

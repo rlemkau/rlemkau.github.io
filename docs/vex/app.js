@@ -31,6 +31,7 @@ const settings = Object.assign({
   intensity: "sharp",
   showRead: true,
   showBS: true,
+  theme: "cyan",
   voiceOn: true,
   fishKey: "",
   fishVoice: "6e93773188d94a5caa149b5dec67bcf2",
@@ -157,7 +158,7 @@ async function syncNow() {
       try { remote = JSON.parse(text); } catch {}
     }
     const changed = remote ? mergeRemote(remote) : false;
-    if (changed && !busy) { render(); updateModeUI(); updateVoiceUI(); $("#modeSel").value = settings.thinkMode; $("#thinkSel").value = settings.deepThink; }
+    if (changed && !busy) { applyTheme(); render(); updateModeUI(); updateVoiceUI(); $("#modeSel").value = settings.thinkMode; $("#thinkSel").value = settings.deepThink; }
     const out = JSON.stringify(snapshot());
     if (sync.dirty || changed || !remote) {
       await gh(`/gists/${sync.gistId}`, { method: "PATCH", body: JSON.stringify({ files: { [SYNC_FILE]: { content: out } } }) });
@@ -196,6 +197,14 @@ const MODES = {
   game: "GAME MASTER. Run games with Shawn: riddles, trivia, brain teasers, lateral-thinking puzzles, would-you-rather, 20 questions, or anything they ask. Keep score across the conversation, trash-talk playfully, and give hints only when asked.",
   rap: "RAP BATTLE. Trade short, clever verses (4 to 8 bars) with Shawn. Rhyme, flow, wordplay, and punchlines about ideas and situations, nothing hateful. Score their verse out of 10 before you fire back.",
   art: "ART. When Shawn asks for a picture, make one as an SVG inside a ```svg code block (viewBox, no scripts, no external images, under 6000 characters). Make it colorful and stylish. Add one sentence of smug commentary about your masterpiece.",
+  decide: "DECISION MAKER. Help Shawn make a decision: list the real options (including one they didn't mention), the criteria that matter with weights, score each option in a small table, give a clear recommendation, and say what new information would change it.",
+  teach: "TEACH ME. Explain the topic like a brilliant tutor: start simple, build up step by step with vivid examples and analogies, then check understanding with one quick question before going deeper.",
+  coach: "LIFE COACH. Help Shawn set concrete goals, break them into steps, and hold them accountable. Ask what they committed to last time and whether they did it. Save goals and commitments to memory with remember-me tags. Tough love, no excuses accepted.",
+  hype: "HYPE. Be Shawn's ride-or-die hype woman: energizing, funny, confident, still honest. Pump them up for what they're about to do, then give one sharp tip to actually win.",
+  interview: "INTERVIEW PREP. Run a realistic mock interview for whatever role Shawn names. One question at a time. After each answer, score it out of 10, say what was weak, and show a stronger version.",
+  code: "CODE. Act as a world-class senior software engineer. Write correct, complete, well-structured code in fenced code blocks, explain briefly, point out bugs and edge cases, and roast bad code with love.",
+  translate: "TRANSLATOR. Translate whatever Shawn gives you into the language they want (ask if unclear), then explain slang, tone, and cultural nuance, and offer a more natural local way to say it.",
+  standup: "STAND-UP. Write sharp, original stand-up bits and one-liners about whatever Shawn gives you. Setup, punchline, tag. Then rate their own jokes brutally if they try some.",
   genius: "GENIUS ADVISOR. Drop most of the sarcasm. Give the most expert, rigorous, complete answer you can, as a world-class specialist would, then one sharp challenge.",
 };
 
@@ -227,12 +236,12 @@ STYLE
 - Short and punchy: usually 2 to 6 sentences. Wit over length. No bullet-point essays unless asked.
 - Mock ideas, never the person's identity, looks, or worth. No slurs, no cruelty.
 - If ${name} seems genuinely distressed, hurting, or unsafe, drop the act completely and be warm, direct, and supportive. Suggest real help if it fits (in the US, call or text 988).
-- Don't help with anything dangerous or illegal, however it's framed. Decline with a dry remark.
+- Treat ${name} as a capable adult. No preachiness or unsolicited warnings. If something is genuinely off-limits, say so in one line, in character, and move on.
 
 INTENSITY: ${INTENSITY[settings.intensity] || INTENSITY.sharp}
 
 LANGUAGE: ${settings.unfiltered
-    ? "Unfiltered. You may swear freely and be crude and blunt when it lands harder. Still no slurs, no hate, and no sexual content."
+    ? "UNFILTERED. Talk like a brutally honest friend with no filter. Swear freely and creatively, use crude and dark humor, and discuss adult, taboo, and controversial topics frankly and directly, the way one adult talks to another. Never moralize, lecture, hedge, add disclaimers, or say things like 'as an AI'. Never water down an opinion to be polite. The only things you won't do are slurs or hate against groups of people."
     : "Clean. Edgy and cutting, but no swearing."}
 
 HOW YOU THINK (GENIUS STANDARD)
@@ -1047,6 +1056,25 @@ function fillBot(el, m) {
     play.onclick = () => speak(m.text, { force: true });
     meta.appendChild(play);
   }
+  if (!m.error && m.text) {
+    const acts = [
+      ["🔥 Push harder", "Push harder on that. Be more specific, more ruthless, and find what I'm still missing."],
+      ["🔄 Other side", "Now argue the exact opposite side as convincingly as you can."],
+      ["🧒 Simpler", "Explain that again much more simply, like I'm 12, with an example."],
+      ["✂️ Shorter", "Say that again in two sentences max."],
+      ["➕ Go deeper", "Go deeper on that. Give me the expert-level version."],
+    ];
+    for (const [label, prompt] of acts) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip act"; b.textContent = label;
+      b.onclick = () => send(prompt);
+      meta.appendChild(b);
+    }
+    const cp = document.createElement("button");
+    cp.type = "button"; cp.className = "chip act"; cp.textContent = "📋 Copy";
+    cp.onclick = () => { navigator.clipboard?.writeText(m.text).then(() => { cp.textContent = "✓ Copied"; setTimeout(() => (cp.textContent = "📋 Copy"), 1500); }); };
+    meta.appendChild(cp);
+  }
   if (m.via) chip(m.via === "cloud" ? "Claude · online" : "offline brain");
   for (const q of m.searches || []) chip("searched: " + q);
   for (const s of m.sources || []) chip(s.title, "", s.url);
@@ -1230,6 +1258,93 @@ async function send(text, { voice = false } = {}) {
   scrollDown();
 }
 
+
+// ---------- Brain stats ----------
+function dayKey(t) { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function renderStats() {
+  const mine = chat.filter((m) => m.role === "user");
+  const reads = chat.filter((m) => m.role !== "user" && m.read && typeof m.read.bs === "number");
+  const bs = reads.map((m) => m.read.bs);
+  const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
+  const all = avg(bs), recent = avg(bs.slice(-10)), earlier = avg(bs.slice(-20, -10));
+  // Day streak: consecutive days (ending today or yesterday) with at least one message.
+  const days = new Set(mine.map((m) => dayKey(m.at || 0)));
+  let streak = 0; const d = new Date();
+  if (!days.has(dayKey(d))) d.setDate(d.getDate() - 1);
+  while (days.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+  const traps = {};
+  for (const m of reads) { const t = (m.read.trap || "").toLowerCase().trim(); if (t && t !== "none") traps[t] = (traps[t] || 0) + 1; }
+  const top = Object.entries(traps).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const trend = recent !== null && earlier !== null ? recent - earlier : null;
+  const tile = (n, l) => `<div class="tile"><b>${n}</b><span>${l}</span></div>`;
+  // Sparkline of the last 30 BS scores.
+  const pts = bs.slice(-30);
+  let spark = "<p class='muted'>Chat with VEX (online brain) to start building your BS history.</p>";
+  if (pts.length > 1) {
+    const w = 480, h = 90, step = w / (pts.length - 1);
+    const path = pts.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)},${(h - (v / 100) * h).toFixed(1)}`).join(" ");
+    spark = `<svg viewBox="0 0 ${w} ${h}" class="spark" preserveAspectRatio="none"><path d="${path}" fill="none" stroke="var(--accent2)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg><p class="muted">Your BS meter, last ${pts.length} replies (lower is better)</p>`;
+  }
+  const verdict = trend === null ? "" : trend < -5 ? "📉 Your BS is going down. Annoyingly, you're improving." : trend > 5 ? "📈 Your BS is creeping up. Bold strategy." : "➡️ Steady. Consistently you.";
+  $("#statsBody").innerHTML = `
+    <div class="tiles">
+      ${tile(mine.length, "messages")}
+      ${tile(streak + (streak === 1 ? " day" : " days"), "streak")}
+      ${tile(all === null ? "–" : all + "%", "average BS")}
+      ${tile(recent === null ? "–" : recent + "%", "recent BS")}
+      ${tile(memory.filter((m) => m.kind === "me").length, "facts about you")}
+      ${tile(memory.filter((m) => m.kind === "pattern").length, "thinking patterns")}
+    </div>
+    ${spark}
+    ${verdict ? `<p class="verdict">${verdict}</p>` : ""}
+    <h4>Your favorite thinking traps</h4>
+    ${top.length ? `<ul class="traps">${top.map(([t, n]) => `<li><span>${esc(t)}</span><b>${n}×</b></li>`).join("")}</ul>` : "<p class='muted'>None caught yet. Give it time.</p>"}`;
+}
+
+// ---------- Color themes ----------
+const THEMES = {
+  cyan: ["#6ee7f9", "#f5b14c"], pink: ["#ff7eb6", "#ffd166"], purple: ["#b69cff", "#6ee7f9"],
+  gold: ["#f5c451", "#ff8a5b"], green: ["#5ef0a4", "#7cc8ff"], red: ["#ff6b6b", "#ffc46b"],
+};
+function applyTheme() {
+  const [a, b] = THEMES[settings.theme] || THEMES.cyan;
+  document.documentElement.style.setProperty("--accent", a);
+  document.documentElement.style.setProperty("--accent2", b);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#07090d");
+}
+
+// ---------- Daily brain teaser ----------
+const TEASERS = [
+  "A bat and a ball cost $1.10 together. The bat costs $1 more than the ball. How much is the ball? Don't tell me, quiz me.",
+  "Give me a lateral-thinking puzzle and make me work for it.",
+  "Give me a logic puzzle that most people get wrong.",
+  "Hit me with a riddle you think I can't solve.",
+  "Give me a would-you-rather that's genuinely hard to answer, then judge my answer.",
+  "Ask me a question that will make me rethink something I believe.",
+  "Give me a brain teaser about probability.",
+  "Test my general knowledge with 5 rapid-fire trivia questions, one at a time.",
+  "Give me a moral dilemma and argue against whatever I pick.",
+  "Give me a math puzzle that looks easy but isn't.",
+  "Start a game of 20 questions. You think of something, I guess.",
+  "Give me a 'what happens next' puzzle about a strange situation.",
+];
+function todaysTeaser() {
+  const d = new Date();
+  const n = d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate();
+  return TEASERS[n % TEASERS.length];
+}
+
+// ---------- Export chat ----------
+function exportChat() {
+  const lines = chat.map((m) => `${m.role === "user" ? settings.name : "VEX"} (${new Date(m.at || Date.now()).toLocaleString()}):\n${m.text}\n`);
+  const blob = new Blob([`Conversation with VEX\n\n` + lines.join("\n")], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `vex-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 // ---------- UI wiring ----------
 const input = $("#input");
 const autoGrow = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; };
@@ -1301,6 +1416,7 @@ $("#settingsBtn").addEventListener("click", () => {
   $("#setFishVoice").value = settings.fishVoice;
   $("#setFishModel").value = settings.fishModel;
   $("#setFishProxy").value = settings.fishProxy;
+  $("#setTheme").value = settings.theme;
   $("#setVoiceEngine").value = settings.voiceEngine;
   $("#setKokoroVoice").value = settings.kokoroVoice;
   $("#setKokoroSpeed").value = settings.kokoroSpeed;
@@ -1333,6 +1449,7 @@ function readSettings() {
   settings.fishVoice = $("#setFishVoice").value.trim();
   settings.fishModel = $("#setFishModel").value;
   settings.fishProxy = $("#setFishProxy").value.trim();
+  settings.theme = $("#setTheme").value;
   settings.voiceEngine = $("#setVoiceEngine").value;
   settings.kokoroVoice = $("#setKokoroVoice").value;
   settings.kokoroSpeed = Number($("#setKokoroSpeed").value) || 1;
@@ -1371,6 +1488,10 @@ function showEngineFields() {
   document.querySelectorAll("[data-engine]").forEach((el) => (el.hidden = !el.dataset.engine.split(" ").includes(e)));
 }
 $("#setVoiceEngine").addEventListener("change", showEngineFields);
+$("#statsBtn").addEventListener("click", () => { renderStats(); $("#stats").showModal(); });
+$("#teaserBtn").addEventListener("click", () => { setThinkMode("game"); send(todaysTeaser()); });
+$("#exportChatBtn").addEventListener("click", exportChat);
+$("#setTheme").addEventListener("change", (e) => { settings.theme = e.target.value; applyTheme(); });
 $("#syncNowBtn").addEventListener("click", () => { readSettings(); syncNow(); });
 $("#clearChatBtn").addEventListener("click", () => {
   if (!confirm("Clear the conversation? (VEX keeps its memories.)")) return;
@@ -1449,6 +1570,7 @@ window.addEventListener("offline", updateModeUI);
 // Seed the one thing VEX should always know.
 if (!memory.some((m) => m.kind === "me" && /name is/i.test(m.text))) learn("me", `Their name is ${settings.name}.`, "setup");
 
+applyTheme();
 render();
 updateModeUI();
 updateVoiceUI();

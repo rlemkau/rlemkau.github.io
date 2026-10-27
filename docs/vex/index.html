@@ -28,6 +28,9 @@
       <button id="voiceBtn" class="icon-btn" title="Voice off" aria-label="Toggle voice" aria-pressed="false">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path class="mute" d="m16 9.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
+      <button id="statsBtn" class="icon-btn" title="Your brain stats" aria-label="Brain stats">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 20V10m6 10V4m6 16v-7m4 7H3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
       <button id="memBtn" class="icon-btn" title="What VEX remembers" aria-label="Memory">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4.4 3 5.7V19a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-3.3c1.8-1.3 3-3.3 3-5.7a7 7 0 0 0-7-7Zm-2 15h4m-4-2h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
@@ -52,6 +55,7 @@
         <button class="starter" data-mode="art">Draw me a self-portrait.</button>
         <button class="starter" data-mode="story">Start a sci-fi story where I'm the main character.</button>
       </div>
+      <button id="teaserBtn" class="teaser" type="button">🧩 Today's brain teaser</button>
       <p class="fine" id="introHint"></p>
     </section>
   </main>
@@ -73,7 +77,17 @@
           <option value="premortem">🪦 Pre-mortem</option>
           <option value="factcheck">🔎 Fact-check me</option>
         </optgroup>
+        <optgroup label="Help me">
+          <option value="decide">⚖️ Decision maker</option>
+          <option value="teach">🎓 Teach me</option>
+          <option value="coach">🏋️ Life coach</option>
+          <option value="interview">💼 Interview prep</option>
+          <option value="code">💻 Code</option>
+          <option value="translate">🌍 Translate</option>
+        </optgroup>
         <optgroup label="Fun">
+          <option value="hype">📣 Hype me up</option>
+          <option value="standup">🎙️ Stand-up comedy</option>
           <option value="roast">🔥 Roast</option>
           <option value="game">🎲 Games & riddles</option>
           <option value="rap">🎤 Rap battle</option>
@@ -135,6 +149,18 @@
       </label>
 
       <label class="field">
+        <span>Color theme</span>
+        <select id="setTheme">
+          <option value="cyan">Cyan</option>
+          <option value="pink">Pink</option>
+          <option value="purple">Purple</option>
+          <option value="gold">Gold</option>
+          <option value="green">Green</option>
+          <option value="red">Red</option>
+        </select>
+      </label>
+
+      <label class="field">
         <span>Attitude</span>
         <select id="setIntensity">
           <option value="gentle">Gentle: teasing, encouraging</option>
@@ -144,7 +170,7 @@
       </label>
       <label class="check">
         <input id="setUnfiltered" type="checkbox">
-        <span>Unfiltered language (VEX can swear)</span>
+        <span>Unfiltered: swearing, crude and dark humor, no lectures or disclaimers</span>
       </label>
       <label class="check">
         <input id="setShowBS" type="checkbox">
@@ -307,6 +333,15 @@
     </form>
   </dialog>
 
+  <!-- Brain stats -->
+  <dialog id="stats" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <h3>Your brain stats</h3>
+      <div id="statsBody"></div>
+      <div class="row end"><button value="close" class="primary">Done</button></div>
+    </form>
+  </dialog>
+
   <!-- Memory -->
   <dialog id="memory" class="sheet">
     <form method="dialog" class="sheet-body">
@@ -323,6 +358,7 @@
         <button type="button" id="memAdd" class="ghost">Add</button>
       </div>
       <div class="row end">
+        <button type="button" id="exportChatBtn" class="ghost">Export chat as text</button>
         <button type="button" id="memExport" class="ghost">Back up everything</button>
         <label class="ghost filebtn">Restore<input id="memImport" type="file" accept="application/json" hidden></label>
         <button value="close" class="primary">Done</button>
