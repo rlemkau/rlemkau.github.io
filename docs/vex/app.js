@@ -384,7 +384,12 @@ async function getEngine() {
   const setP = (p, txt) => { $("#loadFill").style.width = Math.round(p * 100) + "%"; $("#loadText").textContent = txt; };
   enginePromise = (async () => {
     const webllm = await import("./vendor/web-llm.js");
-    const cb = (r) => setP(r.progress || 0, r.text?.replace(/\[.*?\]\s*/, "") || "Loading…");
+    const cb = (r) => {
+      const pct = Math.round((r.progress || 0) * 100);
+      setP(r.progress || 0, r.text?.replace(/\[.*?\]\s*/, "") || "Loading…");
+      // Show it on the call screen too, so a first-time download doesn't look frozen.
+      if (call.on) $("#callState").textContent = `Downloading VEX's offline brain… ${pct}% (first time only)`;
+    };
     if (engine) { await engine.reload(settings.localModel); }
     else { engine = await webllm.CreateMLCEngine(settings.localModel, { initProgressCallback: cb }); }
     engineModel = settings.localModel;
