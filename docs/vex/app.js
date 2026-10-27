@@ -43,7 +43,17 @@ const settings = Object.assign({
   voiceEngine: "kokoro",
   kokoroVoice: "bf_emma",
   kokoroSpeed: 1.05,
+  localEngine: "browser",
+  ollamaUrl: "http://localhost:11434",
+  ollamaModel: "qwen2.5:14b",
   pcVoiceUrl: "",
+  relayUrl: "",
+  pplxKey: "",
+  pplxEffort: "low",
+  altName: "",
+  altUrl: "",
+  altKey: "",
+  altModel: "",
   pcVoiceId: "vex",
   githubToken: "",
 }, store.get("settings", {}));
@@ -67,7 +77,7 @@ const saveMemory = () => { store.set("memory", memory); markDirty(); };
 // ---------- Sync across devices (private GitHub Gist) ----------
 // Memories, chat and settings sync between your phone and computer. Changes made offline wait and
 // sync automatically when you're back online. API keys never leave the device they were typed on.
-const SECRET = ["apiKey", "fishKey", "githubToken"];
+const SECRET = ["apiKey", "fishKey", "githubToken", "pplxKey", "altKey"];
 const SYNC_FILE = "vex-sync.json";
 const sync = {
   gistId: store.get("gistId", ""),
@@ -344,6 +354,10 @@ async function reflect() {
       if (!res.ok) return [];
       const data = await res.json();
       out = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    } else if (settings.localEngine === "ollama") {
+      const r = await fetch(settings.ollamaUrl.replace(/\/+$/, "") + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: settings.ollamaModel, stream: false, messages: [{ role: "user", content: prompt }], options: { temperature: 0.2 } }) });
+      if (!r.ok) return [];
+      out = (await r.json()).message?.content || "";
     } else if (engine) {
       const r = await engine.chat.completions.create({ messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: 200 });
       out = r.choices[0]?.message?.content || "";
@@ -445,21 +459,27 @@ async function kbAdd(title, text, source = "you added") {
   return doc;
 }
 async function kbDelete(id) {
+  if (KB.docs.find((d) => d.id === id)?.source === "built-in") store.set("kbRemoved", [...store.get("kbRemoved", []), id]);
   await kbTx("readwrite", (s) => s.delete(id));
   KB.docs = KB.docs.filter((d) => d.id !== id); kbReindex();
 }
 KB.ready = (async () => {
   try {
     KB.docs = await kbTx("readonly", (s) => s.getAll());
-    if (!store.get("kbStarter", false)) {
-      const r = await fetch("knowledge/starter.json");
-      const pack = await r.json();
+    // Built-in knowledge packs: load any that are new or updated (and not deleted by you).
+    const have = store.get("kbPacks", {});
+    const removed = store.get("kbRemoved", []);
+    const list = (await (await fetch("knowledge/packs.json")).json()).packs;
+    for (const p of list) {
+      if (have[p.id] === p.v || removed.includes(p.id)) continue;
+      const pack = await (await fetch("knowledge/" + p.file)).json();
       // One chunk per idea so searches find exactly the right one.
-      const doc = { id: "starter", title: pack.title, source: pack.source, at: Date.now(), chunks: pack.entries.map(([t, b]) => `${t}: ${b}`) };
-      await kbTx("readwrite", (s) => s.put(doc));
-      KB.docs = KB.docs.filter((d) => d.id !== "starter").concat(doc);
-      store.set("kbStarter", true);
+      const doc = { id: p.id, title: pack.title, source: pack.source, at: Date.now(), chunks: pack.entries.map(([t, b]) => `${t}: ${b}`) };
+      await kbTx("readwrite", (st) => st.put(doc));
+      KB.docs = KB.docs.filter((d) => d.id !== p.id).concat(doc);
+      have[p.id] = p.v;
     }
+    store.set("kbPacks", have);
     kbReindex();
   } catch (e) { console.warn("Knowledge library unavailable", e); }
 })();
@@ -502,28 +522,29 @@ function needsClaude(text = "", files = []) {
   if (/\b(analy[sz]e|step[- ]by[- ]step|in depth|detailed|research|calculate|prove|compare|write (me )?(an? )?(essay|report|plan|code|script|program))\b/i.test(text)) return "complex request";
   return null;
 }
-function localReady() { return hasGPU(); }
+function localReady() { return settings.localEngine === "ollama" || hasGPU(); }
 
 function pickBrain(text, files, force) {
-  const canCloud = navigator.onLine && !!settings.apiKey;
-  if (force === "cloud" && canCloud) return "cloud";
+  const canCloud = navigator.onLine && (hasClaude() || hasPplx() || hasAlt());
+  if (force === "cloud" && hasClaude()) return "cloud";
+  if (force === "perplexity" && hasPplx()) return "perplexity";
   if (force === "local") return "local";
   if (/^\s*\/local\b/i.test(text || "")) return "local";
   if (settings.mode === "local") return "local";
-  if (settings.mode === "cloud") return "cloud";
-  if (settings.mode === "auto") return canCloud ? "cloud" : "local";
+  if (settings.mode === "cloud") return hasClaude() ? "cloud" : "online";
+  if (settings.mode === "auto") return canCloud ? (hasClaude() ? "cloud" : "online") : "local";
   // Smart: offline unless this message really needs Claude (or the offline brain can't run here).
   if (!canCloud) return "local";
   if (!localReady()) return "cloud";
   if (text === undefined) return "local";
-  return needsClaude(text, files) ? "cloud" : "local";
+  return needsClaude(text, files) ? "online" : "local";
 }
 
 function updateModeUI() {
   const b = pickBrain();
-  $("#modeDot").className = "dot " + b;
+  $("#modeDot").className = "dot " + (b === "local" ? "local" : "cloud");
   const label = { auto: "Auto", local: "Local", cloud: "Claude", smart: "Smart" }[settings.mode];
-  $("#modeLabel").textContent = settings.mode === "auto" ? `Auto · ${b === "cloud" ? "Claude" : "Local"}` : settings.mode === "smart" ? (settings.apiKey ? "Smart · Local + Claude" : "Smart · Local") : label;
+  $("#modeLabel").textContent = settings.mode === "auto" ? `Auto · ${b === "cloud" ? "Claude" : "Local"}` : settings.mode === "smart" ? ((hasClaude() || hasPplx() || hasAlt()) ? "Smart · Local + online" : "Smart · Local") : label;
   $("#modeBtn").title = b === "cloud" ? "Using Claude online. Click to switch." : "Using the offline brain. Click to switch.";
 
   const hint = [];
@@ -572,7 +593,46 @@ Start every reply with one line: <<read: bs=0-100 | assumption=... | blindspot=.
 
 const CALL_NOTE = "\n\nVOICE CALL: this is a live spoken conversation. Reply in 1 to 3 short, natural spoken sentences, like talking on the phone. No markdown, lists, emojis, links, or drawings. Still start with the read line.";
 
-async function askLocal(userText, files = [], onLive, { fast = false } = {}) {
+// Ollama: bigger models on your own GPU, free and offline. Bigger memory window, so VEX gets her full personality.
+async function askOllama(userText, files, onLive, { fast = false } = {}) {
+  const history = chat.slice(-13, -1).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: (m.text || "").slice(0, 1500) }));
+  let content = userText;
+  const texts = files.filter((f) => f.kind === "text");
+  if (texts.length) content = texts.map((f) => `File "${f.name}":\n${f.text.slice(0, 20000)}`).join("\n\n") + "\n\n" + content;
+  if (files.some((f) => f.kind !== "text")) content += "\n\n(The user attached a photo or PDF you can't see offline. Say so briefly.)";
+  const sys = persona("local") + memoryBlock(userText, 8) + kbBlock(userText, 5, 3500) + "\n\nYou're running offline on the user's PC, so you can't browse the web. If something needs current info, say so in character." + (fast ? CALL_NOTE : "");
+  let res;
+  try {
+    res = await fetch(settings.ollamaUrl.replace(/\/+$/, "") + "/api/chat", {
+      method: "POST", signal: currentAbort?.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: settings.ollamaModel, stream: true, messages: [{ role: "system", content: sys }, ...history, { role: "user", content }], options: { num_ctx: 8192, temperature: 0.8, num_predict: fast ? 180 : 900 } }),
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw new Error("Can't reach Ollama on this PC. Make sure it's running, and that OLLAMA_ORIGINS allows this site (see Settings → Offline brain).");
+  }
+  if (!res.ok) throw new Error(`Ollama error (${res.status}): ${(await res.text()).slice(0, 160)}. Did you run "ollama pull ${settings.ollamaModel}"?`);
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "", out = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      try { const j = JSON.parse(line); out += j.message?.content || ""; } catch {}
+      onLive?.({ text: out });
+    }
+  }
+  return { text: out, sources: [], via: "local" };
+}
+
+async function askLocal(userText, files = [], onLive, opts = {}) {
+  if (settings.localEngine === "ollama") return askOllama(userText, files, onLive, opts);
+  const { fast = false } = opts;
   const eng = await getEngine();
   const history = chat.slice(-7, -1).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: (m.text || "").slice(0, 900) }));
   let content = userText;
@@ -742,6 +802,92 @@ async function askCloud(userText, files = [], onLive, { fast = false } = {}) {
   return { text: text.join(""), sources: [...sources].map(([url, title]) => ({ url, title })), searches, thoughts: thoughts.join("\n\n").slice(0, 6000), deep, via: "cloud" };
 }
 
+
+// ---------- Other online brains: Perplexity (web search) and any OpenAI-style provider ----------
+const relayBase = () => (settings.relayUrl || "").replace(/\/+$/, "");
+function historyText(n = 8) {
+  return chat.slice(-(n + 1), -1).map((m) => `${m.role === "user" ? settings.name : "VEX"}: ${(m.text || "").slice(0, 700)}`).join("\n");
+}
+
+async function askPerplexity(userText, files, onLive, { fast = false } = {}) {
+  if (!relayBase()) throw new Error("Perplexity needs the free VEX relay. Set it up (voice-relay/worker.js) and paste its address in Settings → Relay URL.");
+  onLive?.({ text: "", status: "Searching the web with Perplexity…" });
+  const hist = historyText(6);
+  const res = await fetch(relayBase() + "/perplexity/v1/agent", {
+    method: "POST",
+    signal: currentAbort?.signal,
+    headers: { "Authorization": "Bearer " + settings.pplxKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      effort: fast ? "fast" : (settings.pplxEffort || "low"),
+      tools: [{ type: "web_search" }],
+      instructions: personaLocal() + memoryBlock(userText, 4).slice(0, 1500) + `\n\nToday's date is ${new Date().toDateString()}. Search the web for current facts, then answer in VEX's voice. Be accurate.` + (fast ? CALL_NOTE : ""),
+      input: (hist ? `Recent conversation:\n${hist}\n\n` : "") + `${settings.name}: ${userText}`,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Perplexity rejected the API key. Check it in Settings.");
+    throw new Error(`Perplexity error (${res.status}): ${data?.error?.message || data?.detail || res.statusText}`);
+  }
+  let text = "", sources = [], searches = [];
+  for (const o of data.output || []) {
+    if (o.type === "message") for (const c of o.content || []) if (c.text) text += c.text;
+    if (o.type === "search_results") { searches.push(...(o.queries || [])); sources.push(...(o.results || []).map((r) => ({ url: r.url, title: r.title || r.url }))); }
+  }
+  text = text.replace(/\s?\[(web|fetch|finance):\d+\]/g, "");   // inline citation markers → chips instead
+  const seen = new Set();
+  sources = sources.filter((s) => s.url && !seen.has(s.url) && seen.add(s.url)).slice(0, 8);
+  return { text, sources, searches: searches.slice(0, 3), via: "perplexity" };
+}
+
+async function askAlt(userText, files, onLive, { fast = false } = {}) {
+  onLive?.({ text: "", status: `Asking ${settings.altName || "second brain"}…` });
+  const history = chat.slice(-11, -1).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: (m.text || "").slice(0, 2000) }));
+  let content = userText;
+  const texts = files.filter((f) => f.kind === "text");
+  if (texts.length) content = texts.map((f) => `File "${f.name}":\n${f.text.slice(0, 40000)}`).join("\n\n") + "\n\n" + content;
+  const res = await fetch(settings.altUrl.replace(/\/+$/, "") + "/chat/completions", {
+    method: "POST",
+    signal: currentAbort?.signal,
+    headers: { "Authorization": "Bearer " + settings.altKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: settings.altModel,
+      max_tokens: fast ? 400 : 2500,
+      messages: [{ role: "system", content: persona("local") + memoryBlock(userText, 10) + kbBlock(userText, 5, 3500) + (fast ? CALL_NOTE : "") }, ...history, { role: "user", content }],
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${settings.altName || "Second brain"} error (${res.status}): ${data?.error?.message || res.statusText}`);
+  return { text: data.choices?.[0]?.message?.content || "", sources: [], via: "alt" };
+}
+
+const hasPplx = () => !!(settings.pplxKey && relayBase());
+const hasAlt = () => !!(settings.altKey && settings.altUrl && settings.altModel);
+const hasClaude = () => !!settings.apiKey;
+const brainName = (b) => ({ cloud: "Claude", perplexity: "Perplexity", alt: settings.altName || "Second brain", local: "offline brain" }[b] || b);
+
+// Order of online brains for a message, cheapest sensible first. Claude is last unless only it can do the job.
+function onlineChain(reason) {
+  const chain = [];
+  const webby = reason === "needs current info" || reason === "a link to read";
+  const claudeOnly = reason === "photo or PDF" || reason === "you asked for Claude" || reason === "deep thinking" || settings.thinkMode === "art";
+  if (!claudeOnly) {
+    if (webby && hasPplx()) chain.push("perplexity");
+    if (!webby && hasAlt()) chain.push("alt");
+    if (webby && hasAlt() && !hasPplx()) chain.push("alt");
+  }
+  if (hasClaude()) chain.push("cloud");
+  if (!chain.length && hasPplx()) chain.push("perplexity");
+  if (!chain.length && hasAlt()) chain.push("alt");
+  return chain;
+}
+async function askBrain(b, text, files, onLive, opts) {
+  if (b === "cloud") return askCloud(text, files, onLive, opts);
+  if (b === "perplexity") return askPerplexity(text, files, onLive, opts);
+  if (b === "alt") return askAlt(text, files, onLive, opts);
+  return askLocal(text, files, onLive, opts);
+}
+
 // ---------- Voice ----------
 // Speaks sentence by sentence while the reply is still being written, so VEX starts talking fast.
 // Online: Fish Audio with your voice model. Offline or on failure: the device's built-in voice.
@@ -861,7 +1007,7 @@ function speakBuiltIn(text) {
 async function fishBlob(text) {
   let firstErr = null;
   if (settings.fishKey && navigator.onLine) {
-    try { return await ttsRequest(settings.fishProxy || "https://api.fish.audio", settings.fishKey, settings.fishModel, settings.fishVoice, text); }
+    try { return await ttsRequest(settings.fishProxy || (relayBase() ? relayBase() + "/fish" : "https://api.fish.audio"), settings.fishKey, settings.fishModel, settings.fishVoice, text); }
     catch (e) { firstErr = e; }
   }
   if (settings.pcVoiceUrl) {
@@ -1230,7 +1376,7 @@ function fillBot(el, m) {
       b.onclick = () => send(prompt);
       meta.appendChild(b);
     }
-    if (m.via === "local" && settings.apiKey && m.q) {
+    if (m.via !== "cloud" && settings.apiKey && m.q) {
       const ac = document.createElement("button");
       ac.type = "button"; ac.className = "chip act claude"; ac.textContent = "🧠 Ask Claude";
       ac.title = "Get Claude's sharper answer to the same message (uses API credit)";
@@ -1242,7 +1388,7 @@ function fillBot(el, m) {
     cp.onclick = () => { navigator.clipboard?.writeText(m.text).then(() => { cp.textContent = "✓ Copied"; setTimeout(() => (cp.textContent = "📋 Copy"), 1500); }); };
     meta.appendChild(cp);
   }
-  if (m.via) chip(m.via === "cloud" ? "Claude · online" + (m.why ? " (" + m.why + ")" : "") : "offline brain · free");
+  if (m.via) chip(m.via === "local" ? "offline brain · free" : brainName(m.via) + " · online" + (m.why ? " (" + m.why + ")" : ""));
   for (const q of m.searches || []) chip("searched: " + q);
   for (const s of m.sources || []) chip(s.title, "", s.url);
   const tag = { me: "noted about you: ", pattern: "noticed how you think: ", world: "learned: " };
@@ -1334,6 +1480,7 @@ async function send(text, { voice = false, force = null } = {}) {
   text = (text || "").trim();
   if (/^\/claude\b/i.test(text)) { force = "cloud"; text = text.replace(/^\/claude\b\s*/i, ""); }
   else if (/^\/local\b/i.test(text)) { force = "local"; text = text.replace(/^\/local\b\s*/i, ""); }
+  else if (/^\/(search|perplexity)\b/i.test(text)) { force = "perplexity"; text = text.replace(/^\/(search|perplexity)\b\s*/i, ""); }
   const files = pending; pending = []; renderPending();
   if ((!text && !files.length) || busy) { if (files.length && busy) { pending = files; renderPending(); } return; }
   busy = true;
@@ -1370,16 +1517,27 @@ async function send(text, { voice = false, force = null } = {}) {
 
   await KB.ready;
   let brain = pickBrain(text, files, force);
-  const why = brain === "cloud" && settings.mode === "smart" && force !== "cloud" ? needsClaude(text, files) : null;
+  const why = brain === "online" || (brain === "cloud" && settings.mode === "smart" && force !== "cloud") ? needsClaude(text, files) : null;
+  const chain = brain === "online" ? onlineChain(why) : [brain];
   bot.q = text;
   currentAbort = new AbortController();
   try {
     let result;
     try {
-      result = brain === "cloud" ? await askCloud(text, files, onLive, { fast: voice }) : await askLocal(text, files, onLive, { fast: voice });
+      // Try each online brain in order; if one fails (no credit, blocked, down), move to the next.
+      let lastErr = null;
+      for (const b of chain) {
+        try { brain = b; result = await askBrain(b, text, files, onLive, { fast: voice }); break; }
+        catch (e) {
+          if (e.name === "AbortError") throw e;
+          lastErr = e; console.warn(b + " failed", e);
+          if (chain.length > 1) toast(`${brainName(b)} didn't work (${e.message.slice(0, 90)}). Trying the next brain…`);
+        }
+      }
+      if (!result) throw lastErr || new Error("No brain available.");
     } catch (e) {
       // If the internet drops mid-chat in Auto mode, fall back to the offline brain.
-      if (brain === "cloud" && (settings.mode === "auto" || settings.mode === "smart") && e instanceof TypeError && hasGPU()) {
+      if (brain !== "local" && (settings.mode === "auto" || settings.mode === "smart") && e instanceof TypeError && hasGPU()) {
         console.warn("Claude unreachable, switching to offline brain:", e);
         brain = "local";
         result = await askLocal(text, files, onLive, { fast: voice });
@@ -1590,6 +1748,9 @@ $("#settingsBtn").addEventListener("click", () => {
   $("#setFishModel").value = settings.fishModel;
   $("#setFishProxy").value = settings.fishProxy;
   $("#setTheme").value = settings.theme;
+  for (const k of ["relayUrl", "pplxKey", "pplxEffort", "altName", "altUrl", "altKey", "altModel", "localEngine", "ollamaUrl", "ollamaModel"]) { const el = document.getElementById("set_" + k); if (el) el.value = settings[k] || ""; }
+  showLocalFields();
+  if (!settings.pplxEffort) $("#set_pplxEffort").value = "low";
   $("#setVoiceEngine").value = settings.voiceEngine;
   $("#setKokoroVoice").value = settings.kokoroVoice;
   $("#setKokoroSpeed").value = settings.kokoroSpeed;
@@ -1623,6 +1784,7 @@ function readSettings() {
   settings.fishModel = $("#setFishModel").value;
   settings.fishProxy = $("#setFishProxy").value.trim();
   settings.theme = $("#setTheme").value;
+  for (const k of ["relayUrl", "pplxKey", "pplxEffort", "altName", "altUrl", "altKey", "altModel", "localEngine", "ollamaUrl", "ollamaModel"]) { const el = document.getElementById("set_" + k); if (el) settings[k] = el.value.trim(); }
   settings.voiceEngine = $("#setVoiceEngine").value;
   settings.kokoroVoice = $("#setKokoroVoice").value;
   settings.kokoroSpeed = Number($("#setKokoroSpeed").value) || 1;
@@ -1661,6 +1823,21 @@ function showEngineFields() {
   document.querySelectorAll("[data-engine]").forEach((el) => (el.hidden = !el.dataset.engine.split(" ").includes(e)));
 }
 $("#setVoiceEngine").addEventListener("change", showEngineFields);
+function showLocalFields() {
+  const e = $("#set_localEngine").value;
+  document.querySelectorAll("[data-local]").forEach((el) => (el.hidden = el.dataset.local !== e));
+}
+$("#set_localEngine").addEventListener("change", showLocalFields);
+const ALT_PRESETS = {
+  groq: ["Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"],
+  openai: ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
+  openrouter: ["OpenRouter", "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct"],
+};
+$("#altPreset").addEventListener("change", (e) => {
+  const p = ALT_PRESETS[e.target.value]; if (!p) return;
+  $("#set_altName").value = p[0]; $("#set_altUrl").value = p[1]; $("#set_altModel").value = p[2];
+  e.target.value = "";
+});
 // Knowledge library actions
 const kbState = (t) => ($("#kbState").textContent = t);
 $("#kbAddBtn").addEventListener("click", async () => {
@@ -1759,7 +1936,7 @@ $("#memNew").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.pre
 
 // Backup / restore (API key is never included)
 $("#memExport").addEventListener("click", () => {
-  const { apiKey, fishKey, githubToken, ...safeSettings } = settings;
+  const { apiKey, fishKey, githubToken, pplxKey, altKey, ...safeSettings } = settings;
   const blob = new Blob([JSON.stringify({ app: "vex", version: 1, exported: new Date().toISOString(), settings: safeSettings, memory, chat }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1776,7 +1953,7 @@ $("#memImport").addEventListener("change", async (e) => {
     const known = new Set(memory.map((m) => m.kind + "|" + m.text.toLowerCase()));
     for (const m of data.memory || []) if (!known.has(m.kind + "|" + m.text.toLowerCase())) memory.push(m);
     if (Array.isArray(data.chat) && (!chat.length || confirm("Replace the current conversation with the one in the backup?"))) chat = data.chat;
-    if (data.settings) Object.assign(settings, data.settings, { apiKey: settings.apiKey, fishKey: settings.fishKey, githubToken: settings.githubToken });
+    if (data.settings) Object.assign(settings, data.settings, { apiKey: settings.apiKey, fishKey: settings.fishKey, githubToken: settings.githubToken, pplxKey: settings.pplxKey, altKey: settings.altKey });
     saveMemory(); saveChat(); saveSettings(); render(); renderMemory(); updateModeUI();
     alert("Restored. VEX remembers everything again.");
   } catch (err) { alert("Couldn't restore: " + err.message); }

@@ -1,7 +1,7 @@
 // Caches the app itself so VEX opens with no internet.
 // (The offline AI model is cached separately by the WebLLM library.)
-const CACHE = "vex-app-v7";
-const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.svg", "vendor/web-llm.js", "knowledge/starter.json"];
+const CACHE = "vex-app-v9";
+const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.svg", "vendor/web-llm.js", "knowledge/packs.json", "knowledge/starter.json", "knowledge/people.json", "knowledge/money.json", "knowledge/comms.json", "knowledge/unfiltered.json", "knowledge/world.json", "knowledge/discipline.json"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

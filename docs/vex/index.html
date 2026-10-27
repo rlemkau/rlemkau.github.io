@@ -192,7 +192,34 @@
       </label>
 
       <fieldset>
-        <legend>Online brain (Claude)</legend>
+        <legend>Online brains (used only when needed, in this order)</legend>
+        <label class="field">
+          <span>Relay URL (needed for Perplexity, also fixes Fish Audio)</span>
+          <input id="set_relayUrl" placeholder="https://vex-relay.yourname.workers.dev" spellcheck="false">
+          <small>A free 5-minute setup on Cloudflare. Instructions are at the top of <code>voice-relay/worker.js</code> in your repo.</small>
+        </label>
+        <label class="field">
+          <span>1. Perplexity API key (web search, news, current facts)</span>
+          <input id="set_pplxKey" type="password" placeholder="pplx-…" spellcheck="false">
+          <small>Get one at perplexity.ai → Settings → API. Stored only on this device.</small>
+        </label>
+        <label class="field">
+          <span>Perplexity depth</span>
+          <select id="set_pplxEffort">
+            <option value="fast">Fast (cheapest, quick lookups)</option>
+            <option value="low">Normal (recommended)</option>
+            <option value="medium">Thorough (more searching, costs more)</option>
+          </select>
+        </label>
+        <div class="field">
+          <span>2. Second brain (optional, any OpenAI-style provider, for harder chats)</span>
+          <select id="altPreset"><option value="">Fill in a preset…</option><option value="groq">Groq (very cheap and fast)</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter (hundreds of models)</option></select>
+          <input id="set_altName" placeholder="Name (e.g. Groq)" spellcheck="false">
+          <input id="set_altUrl" placeholder="Base URL (e.g. https://api.groq.com/openai/v1)" spellcheck="false">
+          <input id="set_altModel" placeholder="Model (e.g. llama-3.3-70b-versatile)" spellcheck="false">
+          <input id="set_altKey" type="password" placeholder="API key" spellcheck="false">
+        </div>
+        <p class="muted"><b>3. Claude</b> (below) is the last resort, used for photos, PDFs, deep thinking, art, or when the others fail.</p>
         <label class="field">
           <span>Anthropic API key</span>
           <input id="setKey" type="password" placeholder="sk-ant-…" spellcheck="false">
@@ -223,11 +250,24 @@
       <fieldset>
         <legend>Offline brain (runs on your device)</legend>
         <label class="field">
+          <span>Where the offline brain runs</span>
+          <select id="set_localEngine">
+            <option value="browser">In the browser (no setup, works on any computer)</option>
+            <option value="ollama">Ollama on this PC (bigger, smarter models)</option>
+          </select>
+        </label>
+        <div data-local="ollama" class="field">
+          <span>Ollama model</span>
+          <input id="set_ollamaModel" placeholder="qwen2.5:14b" spellcheck="false">
+          <input id="set_ollamaUrl" placeholder="http://localhost:11434" spellcheck="false">
+          <small>Setup: install Ollama from ollama.com, then in PowerShell run <code>ollama pull qwen2.5:14b</code> and <code>setx OLLAMA_ORIGINS "https://rlemkau.github.io"</code>. Quit Ollama from the system tray and open it again. With 16 GB of graphics memory, 14B models run well.</small>
+        </div>
+        <label class="field" data-local="browser">
           <span>Local model</span>
           <select id="setLocalModel"></select>
           <small>Downloads once, then works with no internet. Needs a recent Chrome or Edge (WebGPU). Bigger = smarter but slower.</small>
         </label>
-        <div class="row">
+        <div class="row" data-local="browser">
           <button type="button" id="preloadBtn" class="ghost">Download offline brain now</button>
           <span id="cacheState" class="muted"></span>
         </div>

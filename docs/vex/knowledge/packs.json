@@ -1,0 +1,9 @@
+{"packs":[
+ {"id":"starter","file":"starter.json","v":1},
+ {"id":"people","file":"people.json","v":1},
+ {"id":"money","file":"money.json","v":1},
+ {"id":"comms","file":"comms.json","v":1},
+ {"id":"unfiltered","file":"unfiltered.json","v":1},
+ {"id":"world","file":"world.json","v":1},
+ {"id":"discipline","file":"discipline.json","v":1}
+]}

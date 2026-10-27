@@ -1,0 +1,22 @@
+{"title":"How the world works: science, tech & history","source":"built-in","entries":[
+["How AI language models work","They're trained on huge amounts of text to predict the next word, which produces surprisingly capable reasoning and writing. They can sound confident while being wrong ('hallucinating'), so important facts should be checked."],
+["How the internet works","Data is chopped into packets, routed across many networks, and reassembled. DNS turns names like google.com into numeric addresses. HTTPS encrypts traffic between you and the site."],
+["Passwords and security","Use a password manager, unique passwords everywhere, and two-factor authentication on important accounts. Most hacks come from reused passwords and phishing links, not movie-style hacking."],
+["Evolution","Living things vary, some variations help survival and reproduction, and those spread over generations. Evolution has no goal; it's whatever works well enough to keep reproducing."],
+["Climate basics","Greenhouse gases like CO2 trap heat. Burning fossil fuels has raised CO2 levels sharply since the industrial revolution, warming the planet. Weather is short-term; climate is long-term averages."],
+["Vaccines","They train the immune system to recognize a germ using a harmless piece or weakened version of it, so the body responds faster to the real thing. Serious side effects exist but are rare compared with the diseases prevented."],
+["Inflation","When the general price level rises, each unit of money buys less. Moderate inflation is normal; central banks raise interest rates to cool it down. Cash savings lose value over time because of it."],
+["Interest rates","The price of borrowing money. Higher rates make loans and mortgages more expensive, slow the economy, and usually push stock and house prices down; lower rates do the opposite."],
+["Supply and demand","Prices rise when demand exceeds supply and fall when supply exceeds demand. Shortages and price spikes usually trace back to one side moving faster than the other."],
+["The scientific method","Observe, hypothesize, predict, test, and revise. A single study proves little; replication and many studies pointing the same way are what make science reliable."],
+["Statistics traps","Averages hide spread; small samples are noisy; relative risk ('doubles your risk!') can mean tiny absolute change. Always ask: compared to what, out of how many?"],
+["The universe in brief","The universe is about 13.8 billion years old. The Sun is one of hundreds of billions of stars in the Milky Way, which is one of hundreds of billions of galaxies. Light from the Sun takes about 8 minutes to reach Earth."],
+["Big turning points in history","Agriculture (settled life), writing (records and law), the printing press (mass ideas), the scientific and industrial revolutions (modern wealth), and computing and the internet (the information age)."],
+["Why empires fall","Common patterns: overextension, debt, inequality, political infighting, rigid institutions, and failing to adapt to new technology or rivals. Rarely a single cause."],
+["How elections usually work","Most democracies use either winner-take-all districts or proportional representation. Turnout, district boundaries and voting rules can shape results as much as opinions do."],
+["Sleep science","Most adults need roughly 7 to 9 hours. Sleep consolidates memory and regulates mood and appetite. Consistent wake times, morning light, and less caffeine late in the day help the most."],
+["Exercise basics","Mix strength training and cardio, progress gradually, and be consistent. Strength training matters at every age. Most results come from showing up regularly, not from the perfect program."],
+["Nutrition basics","Mostly whole foods, enough protein, plenty of plants, and not too many ultra-processed snacks and sugary drinks. No single superfood or villain food explains health; overall patterns do."],
+["How habits change the brain","Repeated actions strengthen neural pathways, making behaviors more automatic. That's why the first weeks of a habit feel hardest and why old habits come back under stress."],
+["Energy and electricity","Power plants spin turbines (with steam, wind, water) to generate electricity; solar panels convert light directly. Batteries store energy chemically. Grids balance supply and demand every second."]
+]}
