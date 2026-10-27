@@ -10,7 +10,7 @@ A smug, theatrical AI whose whole job is to challenge how you think. It pokes ho
   - **Auto mode** uses Claude when you're online with a key and switches to the offline brain otherwise, including if your connection drops mid-chat.
 - **Learns you:** remembers facts about you, notices patterns in how you reason, and saves what it finds on the web. Both brains use the same memory.
 - **Shows its thinking:** each reply can show "VEX's read": the assumption you're making, your blind spot, and the thinking trap involved.
-- **Talks out loud:** use any Fish Audio voice model, run a cloned voice free on your own PC, or fall back to your device's built-in voice offline. See [`voice-relay/README.md`](voice-relay/README.md).
+- **Talks out loud:** a realistic voice (Kokoro) that runs right in the browser, free and offline after a one-time download, with British and American voices to pick from. You can also use a Fish Audio voice model or a cloned voice on your own PC. See [`voice-relay/README.md`](voice-relay/README.md).
 - **Hands-free voice calls:** tap Talk and just speak. VEX answers out loud, keeps listening, and stops talking the moment you interrupt. Calls use a fast model with short answers so replies come quickly.
 - **Mic button** to dictate instead of typing.
 - **Genius mode thinking:** Think levels Fast, Auto, Deep, and MAX, with a viewable reasoning panel. Reads photos, screenshots, PDFs, text files, and any link you paste.
@@ -36,4 +36,4 @@ It's a plain static site: `index.html`, `style.css`, `app.js`, `sw.js`. On GitHu
 
 ## Credits
 
-The offline brain uses [WebLLM](https://github.com/mlc-ai/web-llm) (Apache 2.0), bundled in `vendor/`.
+The offline brain uses [WebLLM](https://github.com/mlc-ai/web-llm) (Apache 2.0) and the voice uses [Kokoro](https://github.com/hexgrad/kokoro) via kokoro-js (Apache 2.0) with ONNX Runtime Web (MIT), all bundled in `vendor/`.

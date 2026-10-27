@@ -213,16 +213,53 @@
           <span>VEX speaks its replies out loud</span>
         </label>
         <label class="field">
+          <span>Voice engine</span>
+          <select id="setVoiceEngine">
+            <option value="kokoro">VEX's built-in voice: realistic, free, works offline (recommended)</option>
+            <option value="fish">Fish Audio: your custom voice (online, needs a Fish key)</option>
+            <option value="builtin">Basic device voice (robotic, no download)</option>
+          </select>
+          <small>The built-in realistic voice downloads once (about 90 to 330 MB), then needs no internet or keys.</small>
+        </label>
+        <div data-engine="kokoro fish" class="field">
+          <span>Voice</span>
+          <select id="setKokoroVoice">
+            <optgroup label="British">
+              <option value="bf_emma">Emma: warm, clear (best British)</option>
+              <option value="bf_isabella">Isabella: soft, polished</option>
+              <option value="bf_alice">Alice: bright, crisp</option>
+              <option value="bf_lily">Lily: young, gentle</option>
+            </optgroup>
+            <optgroup label="American">
+              <option value="af_heart">Heart: warm, very natural (best overall)</option>
+              <option value="af_bella">Bella: lively, expressive</option>
+              <option value="af_nicole">Nicole: soft, breathy</option>
+              <option value="af_sky">Sky: light, airy</option>
+              <option value="af_sarah">Sarah: friendly</option>
+            </optgroup>
+          </select>
+          <small>With Fish selected, this is the backup voice when Fish isn't working.</small>
+        </div>
+        <label class="field" data-engine="kokoro fish">
+          <span>Speaking speed</span>
+          <select id="setKokoroSpeed">
+            <option value="0.9">Relaxed</option>
+            <option value="1">Normal</option>
+            <option value="1.05">A little quick</option>
+            <option value="1.15">Fast</option>
+          </select>
+        </label>
+        <label class="field" data-engine="fish">
           <span>Fish Audio API key</span>
           <input id="setFishKey" type="password" placeholder="sk-fish-…" spellcheck="false">
-          <small>Stored only in this browser. Leave blank to use your device's built-in voice (works offline).</small>
+          <small>Stored only in this browser.</small>
         </label>
-        <label class="field">
+        <label class="field" data-engine="fish">
           <span>Fish Audio voice model ID</span>
           <input id="setFishVoice" placeholder="e.g. 8ef4a238714b45718ce04243307c57a7" spellcheck="false">
           <small>The ID from the voice's page on fish.audio.</small>
         </label>
-        <label class="field">
+        <label class="field" data-engine="fish">
           <span>Fish Audio model</span>
           <select id="setFishModel">
             <option value="s2.1-pro">s2.1-pro (best quality)</option>
@@ -230,17 +267,17 @@
             <option value="s2-pro">s2-pro</option>
           </select>
         </label>
-        <label class="field">
+        <label class="field" data-engine="fish">
           <span>Fish relay URL (optional)</span>
           <input id="setFishProxy" placeholder="https://vex-voice.yourname.workers.dev" spellcheck="false">
           <small>Leave blank. Only needed if Fish Audio blocks direct browser calls; see <code>voice-relay/README.md</code>.</small>
         </label>
-        <label class="field">
+        <label class="field" data-engine="fish">
           <span>Your PC's voice server (same voice, offline)</span>
           <input id="setPcVoiceUrl" placeholder="http://localhost:8787" spellcheck="false">
           <small>Optional. If Fish Audio can't be reached (or you're offline), VEX uses your voice running on your PC with Fish Speech. Setup: <code>voice-relay/README.md</code>.</small>
         </label>
-        <label class="field">
+        <label class="field" data-engine="fish">
           <span>Voice name on your PC</span>
           <input id="setPcVoiceId" placeholder="vex" spellcheck="false">
         </label>

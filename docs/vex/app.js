@@ -36,6 +36,9 @@ const settings = Object.assign({
   fishVoice: "6e93773188d94a5caa149b5dec67bcf2",
   fishModel: "s2.1-pro",
   fishProxy: "",
+  voiceEngine: "kokoro",
+  kokoroVoice: "bf_emma",
+  kokoroSpeed: 1.05,
   pcVoiceUrl: "",
   pcVoiceId: "vex",
   githubToken: "",
@@ -593,7 +596,65 @@ function speakable(text) {
 }
 
 const voiceWanted = (force) => force || settings.voiceOn || call.on;
-const useFish = () => (settings.fishKey && navigator.onLine) || !!settings.pcVoiceUrl;
+const useFish = () => settings.voiceEngine === "fish" && ((settings.fishKey && navigator.onLine) || !!settings.pcVoiceUrl);
+const useKokoro = () => settings.voiceEngine === "kokoro" || settings.voiceEngine === "fish";  // Kokoro is also Fish's backup
+
+// ---------- Kokoro: realistic voice that runs inside the browser (free, offline after first download) ----------
+let kokoro = null, kokoroP = null, kokoroChain = Promise.resolve(), kokoroWarned = false;
+async function getKokoro() {
+  if (kokoro) return kokoro;
+  if (kokoroP) return kokoroP;
+  const bar = $("#loadBar");
+  const files = {};
+  const progress = (p) => {
+    if (p.status !== "progress" || !p.total) return;
+    files[p.file] = [p.loaded, p.total];
+    const [l, t] = Object.values(files).reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
+    const pct = Math.round((l / t) * 100);
+    bar.hidden = false;
+    $("#loadFill").style.width = pct + "%";
+    $("#loadText").textContent = `Downloading VEX's voice… ${pct}% (first time only)`;
+    if (call.on) $("#callState").textContent = `Downloading VEX's voice… ${pct}% (first time only)`;
+  };
+  kokoroP = (async () => {
+    const mod = await import("./vendor/kokoro.web.js");
+    mod.env.wasmPaths = new URL("vendor/ort/", location.href).href;
+    const id = "onnx-community/Kokoro-82M-v1.0-ONNX";
+    if (navigator.gpu) {
+      try { return (kokoro = await mod.KokoroTTS.from_pretrained(id, { dtype: "fp32", device: "webgpu", progress_callback: progress })); }
+      catch (e) { console.warn("Kokoro WebGPU failed, using CPU", e); }
+    }
+    return (kokoro = await mod.KokoroTTS.from_pretrained(id, { dtype: "q8", device: "wasm", progress_callback: progress }));
+  })();
+  try { return await kokoroP; }
+  catch (e) { kokoroP = null; throw e; }
+  finally { setTimeout(() => (bar.hidden = true), 400); }
+}
+
+// One sentence at a time, in order, so playback can start while the rest is still being made.
+function kokoroBlob(text) {
+  const gen = voiceQ.gen;
+  const run = kokoroChain.then(async () => {
+    if (gen !== voiceQ.gen) throw new Error("skipped");   // interrupted: don't waste time on old sentences
+    const tts = await getKokoro();
+    const audio = await tts.generate(text, { voice: settings.kokoroVoice || "bf_emma", speed: Number(settings.kokoroSpeed) || 1 });
+    return audio.toBlob();
+  });
+  kokoroChain = run.catch(() => {});
+  return run;
+}
+
+// Which engine makes the audio for a sentence. null = device's basic built-in voice.
+function audioFor(text) {
+  if (useFish()) {
+    return fishBlob(text).catch((e) => {
+      if (!fishWarned) { fishWarned = true; toast("Fish Audio isn't working (" + (e instanceof TypeError ? "blocked or offline" : e.message) + "). Using VEX's built-in realistic voice instead."); }
+      return kokoroBlob(text);
+    });
+  }
+  if (useKokoro()) return kokoroBlob(text);
+  return null;
+}
 
 function stopVoice() {
   voiceQ.gen++;
@@ -673,7 +734,7 @@ function enqueueSpeech(text) {
   text = text.trim();
   if (!text) return;
   call.recentSpeech = (call.recentSpeech + " " + text).slice(-600);
-  const item = { text, gen: voiceQ.gen, audio: useFish() ? fishBlob(text) : null };
+  const item = { text, gen: voiceQ.gen, audio: audioFor(text) };
   item.audio?.catch(() => {});
   voiceQ.items.push(item);
   pumpVoice();
@@ -694,10 +755,7 @@ async function pumpVoice() {
         continue;
       } catch (e) {
         console.warn(e);
-        const why = e instanceof TypeError
-          ? "Fish Audio couldn't be reached from the browser. Set up the relay (see voice-relay/README.md) or check your connection."
-          : e.message;
-        if (!fishWarned) { fishWarned = true; toast(why + " Using the built-in voice for now."); }
+        if (!kokoroWarned) { kokoroWarned = true; toast("VEX's realistic voice couldn't load (" + (e.message || "no connection") + "). Using the basic voice for now."); }
       }
     }
     if (it.gen !== voiceQ.gen) continue;
@@ -737,10 +795,9 @@ async function speak(text, { force = false } = {}) {
   stopVoice();
   const sp = new LiveSpeaker(true);
   sp.feed(text, true);
-  if (!useFish()) return { ok: true, via: "builtin" };
-  // Report whether Fish worked (used by the Test voice button).
   const first = voiceQ.items[0]?.audio;
-  try { await first; return { ok: true, via: "fish" }; }
+  if (!first) return { ok: true, via: "builtin" };
+  try { await first; return { ok: true, via: useFish() && !fishWarned ? "fish" : "kokoro" }; }
   catch (e) { return { ok: false, via: "builtin", error: e.message }; }
 }
 
@@ -1244,6 +1301,10 @@ $("#settingsBtn").addEventListener("click", () => {
   $("#setFishVoice").value = settings.fishVoice;
   $("#setFishModel").value = settings.fishModel;
   $("#setFishProxy").value = settings.fishProxy;
+  $("#setVoiceEngine").value = settings.voiceEngine;
+  $("#setKokoroVoice").value = settings.kokoroVoice;
+  $("#setKokoroSpeed").value = settings.kokoroSpeed;
+  showEngineFields();
   $("#setPcVoiceUrl").value = settings.pcVoiceUrl;
   $("#setPcVoiceId").value = settings.pcVoiceId;
   $("#setGithubToken").value = settings.githubToken;
@@ -1272,6 +1333,10 @@ function readSettings() {
   settings.fishVoice = $("#setFishVoice").value.trim();
   settings.fishModel = $("#setFishModel").value;
   settings.fishProxy = $("#setFishProxy").value.trim();
+  settings.voiceEngine = $("#setVoiceEngine").value;
+  settings.kokoroVoice = $("#setKokoroVoice").value;
+  settings.kokoroSpeed = Number($("#setKokoroSpeed").value) || 1;
+  fishWarned = false; kokoroWarned = false;
   settings.pcVoiceUrl = $("#setPcVoiceUrl").value.trim();
   settings.pcVoiceId = $("#setPcVoiceId").value.trim() || "vex";
   const tokenChanged = settings.githubToken !== $("#setGithubToken").value.trim();
@@ -1294,13 +1359,18 @@ $("#testVoiceBtn").addEventListener("click", async () => {
   readSettings();
   $("#voiceState").textContent = "Speaking…";
   const r = await speak(`Hello, ${settings.name}. I've been looking forward to disagreeing with you.`, { force: true });
-  $("#voiceState").textContent = r.via === "fish" ? (settings.fishKey && navigator.onLine ? "Fish Audio voice working ✓" : "PC voice working ✓") : r.error ? "Fish failed, used built-in voice" : "Built-in voice (add a Fish key for your custom voice)";
+  $("#voiceState").textContent = r.via === "kokoro" ? "VEX's voice working ✓" : r.via === "fish" ? (settings.fishKey && navigator.onLine ? "Fish Audio voice working ✓" : "PC voice working ✓") : r.error ? "Couldn't load the voice, used the basic one (see the message below)" : "Built-in voice (add a Fish key for your custom voice)";
 });
 $("#voiceBtn").addEventListener("click", () => {
   settings.voiceOn = !settings.voiceOn;
   if (!settings.voiceOn) stopVoice();
   saveSettings(); updateVoiceUI();
 });
+function showEngineFields() {
+  const e = $("#setVoiceEngine").value;
+  document.querySelectorAll("[data-engine]").forEach((el) => (el.hidden = !el.dataset.engine.split(" ").includes(e)));
+}
+$("#setVoiceEngine").addEventListener("change", showEngineFields);
 $("#syncNowBtn").addEventListener("click", () => { readSettings(); syncNow(); });
 $("#clearChatBtn").addEventListener("click", () => {
   if (!confirm("Clear the conversation? (VEX keeps its memories.)")) return;
@@ -1388,6 +1458,9 @@ if ("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up the voi
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW failed", e));
 }
+
+// Get VEX's voice ready in the background so the first reply isn't delayed.
+if (settings.voiceOn && settings.voiceEngine !== "builtin") setTimeout(() => getKokoro().catch(() => {}), 1500);
 
 // Pull anything new from your other devices on startup.
 lastPublic = publicSettings();
