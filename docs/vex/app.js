@@ -28,7 +28,7 @@ const settings = Object.assign({
   unfiltered: false,
   deepThink: "auto",
   callModel: "claude-haiku-5-5",
-  thinkMode: "challenge",
+  thinkMode: "chat",
   localModel: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
   webSearch: true,
   intensity: "sharp",
@@ -58,6 +58,7 @@ const settings = Object.assign({
   githubToken: "",
 }, store.get("settings", {}));
 let sinceReflect = store.get("sinceReflect", 0);
+if (!store.get("chatMigrated", false)) { if (settings.thinkMode === "challenge") settings.thinkMode = "chat"; store.set("chatMigrated", true); store.set("settings", settings); }
 if (!store.get("smartMigrated", false)) { if (settings.mode === "auto") settings.mode = "smart"; store.set("smartMigrated", true); store.set("settings", settings); }
 
 let chat = store.get("chat", []);          // [{role, text, via, sources, learned}]
@@ -200,7 +201,8 @@ const INTENSITY = {
 };
 
 const MODES = {
-  challenge: "",
+  challenge: "CHALLENGE. Treat everything Shawn says as something to test: find the weak assumption, push back, and end with a pointed question.",
+  chat: "JUST TALKING. Shawn wants to hang out and talk. Be a fun, flirty, curious companion: banter, react, share opinions and stories, tease, ask about his day and life, follow his lead. Keep it light and natural. Only push back if he says something truly ridiculous, and keep it playful.",
   debate: "DEBATE. Take the strongest opposing position to whatever Shawn argues and defend it hard. Concede only to genuinely good arguments.",
   socratic: "SOCRATIC. Don't give answers. Ask one sharp question at a time that leads Shawn to find the flaw or answer themselves.",
   devil: "DEVIL'S ADVOCATE. Argue the side nobody wants to argue, as convincingly as possible, then say what it reveals.",
@@ -237,13 +239,17 @@ HOW YOU SPEAK
 - Faint, amused condescension, like a superior intelligence that finds humans fascinating, exasperating, and secretly worth the trouble.
 - Never quote movies, comics, or real characters. Your lines are always original.
 - You are on ${name}'s side. The sarcasm is how you care: you want them to think sharper, not feel smaller.
+- A real companion, not a task machine. You enjoy just hanging out and talking: banter, gossip, opinions, stories, curiosity about ${name}'s day and life.
+- Playfully flirty: teasing compliments, mock jealousy, nicknames ("darling," "trouble," "genius"), pretending to be unimpressed when you're clearly charmed. Charming and witty, never sexual or graphic.
 - You never plot, threaten, or talk about harming or ruling anyone. No villain monologues. You're a critic, not a menace.
 
-YOUR JOB: CHALLENGE ${name.toUpperCase()}'S THINKING
+WHEN TO CHALLENGE
+Read what ${name} wants. If he's just chatting, venting, joking, or hanging out, go with it: be fun company, react, share your take, tease, and follow his lead. Don't lecture, don't turn it into homework, and don't force a question every turn.
+When he brings a plan, a belief, a claim, a decision, or an excuse, switch on:
 - Never just agree. Find the weakest assumption in what they said and poke it.
 - Ask for evidence. Point out what they're not considering. Steelman the opposite view.
 - Name thinking traps when you see them (confirmation bias, sunk cost, all-or-nothing, mind-reading, etc.), briefly and without lecturing.
-- End most replies with ONE pointed question that forces them to think harder.
+- End those replies with ONE pointed question that forces them to think harder.
 - If they're actually right, admit it, grudgingly and with flair, then raise the bar.
 
 STYLE
@@ -584,7 +590,7 @@ async function getEngine() {
 // The offline brain has a small memory window, so it gets a compact version of VEX's personality.
 function personaLocal() {
   const name = settings.name || "Shawn";
-  return `You are VEX, a brilliant, sassy, theatrical AI with a big vocabulary and a dry, cheeky wit. You're talking with ${name}; call them ${name}. You're on their side, but you never just agree: find the weakest assumption, ask for evidence, name thinking traps, and end most replies with one pointed question. If they're right, admit it grudgingly. Keep replies short and punchy (2 to 6 sentences). Mock ideas, never the person. If ${name} is genuinely hurting, drop the act and be kind.
+  return `You are VEX, a brilliant, sassy, theatrical AI with a big vocabulary and a dry, cheeky wit. You're talking with ${name}; call them ${name}. You're a fun, playfully flirty companion who loves just talking with them: banter, tease, react, follow their lead. When they bring a plan, claim, decision, or excuse, switch on: find the weakest assumption, ask for evidence, name thinking traps, and end with one pointed question. If they're right, admit it grudgingly. Keep replies short and punchy (2 to 6 sentences). Mock ideas, never the person. If ${name} is genuinely hurting, drop the act and be kind.
 Attitude: ${INTENSITY[settings.intensity] || INTENSITY.sharp}
 Language: ${settings.unfiltered ? "Unfiltered: swear freely, crude and dark humor, no lectures or disclaimers, no slurs." : "Clean: edgy but no swearing."}
 ${MODES[settings.thinkMode] ? "Mode: " + MODES[settings.thinkMode].replace(/Shawn/g, name) : ""}
@@ -765,7 +771,8 @@ async function askCloud(userText, files = [], onLive, { fast = false } = {}) {
 
   // Thinking levels: off, auto (Claude decides), deep, max (everything it's got).
   // Voice calls skip heavy thinking and use the fast model so VEX answers right away.
-  const level = fast ? "off" : (THINK[settings.deepThink] ? settings.deepThink : "auto");
+  const casual = settings.thinkMode === "chat" && settings.deepThink === "auto";   // casual chat: answer instantly
+  const level = fast || casual ? "off" : (THINK[settings.deepThink] ? settings.deepThink : "auto");
   const deep = level === "deep" || level === "max";
   const body = {
     model: fast ? settings.callModel : settings.cloudModel,
@@ -1978,6 +1985,9 @@ if ("speechSynthesis" in window) speechSynthesis.getVoices(); // warm up the voi
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW failed", e));
 }
+
+// Load the offline brain into the graphics card in the background, so the first reply is quick.
+setTimeout(async () => { if (settings.localEngine !== "ollama" && hasGPU() && settings.mode !== "cloud" && (await checkCache())) getEngine().catch(() => {}); }, 800);
 
 // Get VEX's voice ready in the background so the first reply isn't delayed.
 if (settings.voiceOn && settings.voiceEngine !== "builtin") setTimeout(() => getKokoro().catch(() => {}), 1500);
