@@ -8,6 +8,8 @@ A smug, theatrical AI whose whole job is to challenge how you think. It pokes ho
   - **Offline brain:** a small AI model that runs entirely in your browser. It downloads once (about 1 to 2 GB), then works with no internet and nothing leaves your device. Needs a browser with WebGPU (recent Chrome or Edge on a computer).
   - **Online brain:** Claude, through your own Anthropic API key, with live web search.
   - **Auto mode** uses Claude when you're online with a key and switches to the offline brain otherwise, including if your connection drops mid-chat.
+- **Smart mode (default):** everyday chat runs on the free offline brain; VEX only calls Claude when a message needs it (current info, photos/PDFs, links, code, deep thinking, complex requests). Replies from the offline brain have an "Ask Claude" button. Start a message with `/claude` or `/local` to choose yourself.
+- **Knowledge library:** a built-in pack of thinking tools (biases, fallacies, mental models, decision frameworks), plus anything you add: pasted notes, text files, or topics and links Claude researches once and VEX keeps forever, offline included.
 - **Learns you:** remembers facts about you, notices patterns in how you reason, and saves what it finds on the web. Both brains use the same memory.
 - **Shows its thinking:** each reply can show "VEX's read": the assumption you're making, your blind spot, and the thinking trap involved.
 - **Talks out loud:** a realistic voice (Kokoro) that runs right in the browser, free and offline after a one-time download, with British and American voices to pick from. You can also use a Fish Audio voice model or a cloned voice on your own PC. See [`voice-relay/README.md`](voice-relay/README.md).

@@ -11,6 +11,9 @@ const store = {
 };
 
 const LOCAL_MODELS = [
+  { id: "Qwen3.5-9B-q4f16_1-MLC", label: "Genius (Qwen 3.5 9B, ~6 GB, needs 8 GB+ graphics) ★ best for your laptop" },
+  { id: "Qwen3-8B-q4f16_1-MLC", label: "Brilliant (Qwen 3 8B, ~5.5 GB)" },
+  { id: "Hermes-3-Llama-3.1-8B-q4f16_1-MLC", label: "Big personality (Hermes 3 8B, ~5 GB, loose filter)" },
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Quick (Qwen 2.5 1.5B, ~1 GB)" },
   { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Smarter (Llama 3.2 3B, ~2 GB)" },
   { id: "Phi-3.5-mini-instruct-q4f16_1-MLC", label: "Thoughtful (Phi 3.5 mini, ~2.2 GB)" },
@@ -19,14 +22,14 @@ const LOCAL_MODELS = [
 
 const settings = Object.assign({
   name: "Shawn",
-  mode: "auto",
+  mode: "smart",
   apiKey: "",
   cloudModel: "claude-opus-5-5",
   unfiltered: false,
   deepThink: "auto",
   callModel: "claude-haiku-5-5",
   thinkMode: "challenge",
-  localModel: LOCAL_MODELS[0].id,
+  localModel: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
   webSearch: true,
   intensity: "sharp",
   showRead: true,
@@ -45,6 +48,7 @@ const settings = Object.assign({
   githubToken: "",
 }, store.get("settings", {}));
 let sinceReflect = store.get("sinceReflect", 0);
+if (!store.get("smartMigrated", false)) { if (settings.mode === "auto") settings.mode = "smart"; store.set("smartMigrated", true); store.set("settings", settings); }
 
 let chat = store.get("chat", []);          // [{role, text, via, sources, learned}]
 let memory = store.get("memory", []);      // [{id, kind: "me"|"world", text, source, at}]
@@ -364,17 +368,162 @@ function explicitMemory(userText) {
 
 // ---------- Brain selection ----------
 const hasGPU = () => !!navigator.gpu;
-function pickBrain() {
+// ---------- Knowledge library ----------
+// Articles, notes and research VEX keeps on this device (IndexedDB) and uses with both brains, offline included.
+const KB = { docs: [], index: [], ready: null };
+function kbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("vex-kb", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("docs", { keyPath: "id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kbTx(mode, fn) {
+  const db = await kbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("docs", mode);
+    const out = fn(tx.objectStore("docs"));
+    tx.oncomplete = () => res(out?.result ?? out);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+function chunkText(text, size = 700) {
+  const paras = text.replace(/\r/g, "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const out = []; let cur = "";
+  for (const p of paras) {
+    if ((cur + "\n\n" + p).length > size && cur) { out.push(cur); cur = ""; }
+    if (p.length > size) { for (let i = 0; i < p.length; i += size) out.push(p.slice(i, i + size)); }
+    else cur = cur ? cur + "\n\n" + p : p;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function kbReindex() {
+  KB.index = [];
+  for (const d of KB.docs) d.chunks.forEach((c, i) => {
+    const w = words(d.title + " " + c);
+    const tf = {};
+    for (const x of w) tf[x] = (tf[x] || 0) + 1;
+    KB.index.push({ doc: d, i, text: c, tf, len: w.length });
+  });
+  KB.df = {};
+  for (const e of KB.index) for (const t in e.tf) KB.df[t] = (KB.df[t] || 0) + 1;
+  KB.avg = KB.index.reduce((a, e) => a + e.len, 0) / (KB.index.length || 1);
+}
+// BM25 keyword search over all stored chunks.
+function kbSearch(query, k = 3) {
+  if (!KB.index.length) return [];
+  const q = [...new Set(words(query))];
+  if (!q.length) return [];
+  const N = KB.index.length;
+  return KB.index.map((e) => {
+    let s = 0;
+    for (const t of q) {
+      const f = e.tf[t]; if (!f) continue;
+      const idf = Math.log(1 + (N - KB.df[t] + 0.5) / (KB.df[t] + 0.5));
+      s += idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * e.len / KB.avg));
+    }
+    return { e, s };
+  }).filter((x) => x.s > 1.2).sort((a, b) => b.s - a.s).slice(0, k).map((x) => x.e);
+}
+function kbBlock(query, k, maxChars) {
+  const hits = kbSearch(query, k);
+  if (!hits.length) return "";
+  let out = "\n\nFROM YOUR KNOWLEDGE LIBRARY (use if relevant, in your own words):\n", used = 0;
+  for (const h of hits) {
+    const t = `[${h.doc.title}] ${h.text}\n`;
+    if (used + t.length > maxChars) break;
+    out += t; used += t.length;
+  }
+  return out;
+}
+async function kbAdd(title, text, source = "you added") {
+  const doc = { id: crypto.randomUUID?.() || String(Date.now()), title: title.slice(0, 120) || "Untitled", source, at: Date.now(), chunks: chunkText(text) };
+  await kbTx("readwrite", (s) => s.put(doc));
+  KB.docs.push(doc); kbReindex();
+  return doc;
+}
+async function kbDelete(id) {
+  await kbTx("readwrite", (s) => s.delete(id));
+  KB.docs = KB.docs.filter((d) => d.id !== id); kbReindex();
+}
+KB.ready = (async () => {
+  try {
+    KB.docs = await kbTx("readonly", (s) => s.getAll());
+    if (!store.get("kbStarter", false)) {
+      const r = await fetch("knowledge/starter.json");
+      const pack = await r.json();
+      // One chunk per idea so searches find exactly the right one.
+      const doc = { id: "starter", title: pack.title, source: pack.source, at: Date.now(), chunks: pack.entries.map(([t, b]) => `${t}: ${b}`) };
+      await kbTx("readwrite", (s) => s.put(doc));
+      KB.docs = KB.docs.filter((d) => d.id !== "starter").concat(doc);
+      store.set("kbStarter", true);
+    }
+    kbReindex();
+  } catch (e) { console.warn("Knowledge library unavailable", e); }
+})();
+
+// Ask Claude once to research something; the result is saved to the library and works offline forever after.
+async function kbLearnWithClaude(what, isUrl) {
+  if (!settings.apiKey || !navigator.onLine) throw new Error("This needs your Anthropic API key and an internet connection (it's a one-time cost).");
+  const ask = isUrl
+    ? `Read this page: ${what}\n\nWrite dense, well-organized study notes capturing all of its important facts, ideas, numbers, and arguments, so someone could answer detailed questions about it without the original. Use short headed sections. In your own words, no long quotes. Start with a one-line title on the first line.`
+    : `Research this topic using web search: ${what}\n\nWrite a dense, accurate knowledge brief (about 1200 to 1800 words) covering the key facts, how it works, important numbers and dates, common misconceptions, expert disagreements, and practical takeaways. Short headed sections, plain language, your own words. Start with a one-line title on the first line.`;
+  const body = {
+    model: settings.cloudModel, max_tokens: 6000,
+    messages: [{ role: "user", content: ask }],
+    tools: [isUrl ? { type: "web_fetch_20250910", name: "web_fetch", max_uses: 2 } : { type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+  };
+  let text = "";
+  for (let round = 0; round < 3; round++) {
+    const data = await streamClaude(body, () => {});
+    text += (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    if (data.stop_reason !== "pause_turn") break;
+    body.messages = [...body.messages, { role: "assistant", content: data.content }];
+  }
+  text = text.trim();
+  if (!text) throw new Error("Claude didn't return any notes. Try again.");
+  const [first, ...rest] = text.split("\n");
+  return kbAdd(first.replace(/^#+\s*/, "").replace(/\*\*/g, "").trim() || what, rest.join("\n").trim() || text, isUrl ? what : "researched by Claude");
+}
+
+// ---------- Smart routing: free offline brain first, Claude only when it's needed ----------
+const NEEDS_CLOUD = /\b(today|tonight|tomorrow|yesterday|latest|current(ly)?|news|this (week|month|year)|right now|recent(ly)?|price|prices|cost of|stock|weather|forecast|score|scores|search|look (it )?up|google|who won|election|20(2[5-9]|3\d))\b/i;
+const CLOUD_MODES = new Set(["factcheck", "code", "art", "genius", "decide", "interview"]);
+function needsClaude(text = "", files = []) {
+  if (/^\s*\/claude\b/i.test(text)) return "you asked for Claude";
+  if (files.some((f) => f.kind !== "text")) return "photo or PDF";
+  if (/https?:\/\/\S+/.test(text)) return "a link to read";
+  if (NEEDS_CLOUD.test(text)) return "needs current info";
+  if (settings.deepThink === "deep" || settings.deepThink === "max") return "deep thinking";
+  if (CLOUD_MODES.has(settings.thinkMode)) return "this mode";
+  if (text.length > 700) return "long or complex";
+  if (/\b(analy[sz]e|step[- ]by[- ]step|in depth|detailed|research|calculate|prove|compare|write (me )?(an? )?(essay|report|plan|code|script|program))\b/i.test(text)) return "complex request";
+  return null;
+}
+function localReady() { return hasGPU(); }
+
+function pickBrain(text, files, force) {
+  const canCloud = navigator.onLine && !!settings.apiKey;
+  if (force === "cloud" && canCloud) return "cloud";
+  if (force === "local") return "local";
+  if (/^\s*\/local\b/i.test(text || "")) return "local";
   if (settings.mode === "local") return "local";
   if (settings.mode === "cloud") return "cloud";
-  return navigator.onLine && settings.apiKey ? "cloud" : "local";
+  if (settings.mode === "auto") return canCloud ? "cloud" : "local";
+  // Smart: offline unless this message really needs Claude (or the offline brain can't run here).
+  if (!canCloud) return "local";
+  if (!localReady()) return "cloud";
+  if (text === undefined) return "local";
+  return needsClaude(text, files) ? "cloud" : "local";
 }
 
 function updateModeUI() {
   const b = pickBrain();
   $("#modeDot").className = "dot " + b;
-  const label = { auto: "Auto", local: "Local", cloud: "Claude" }[settings.mode];
-  $("#modeLabel").textContent = settings.mode === "auto" ? `Auto · ${b === "cloud" ? "Claude" : "Local"}` : label;
+  const label = { auto: "Auto", local: "Local", cloud: "Claude", smart: "Smart" }[settings.mode];
+  $("#modeLabel").textContent = settings.mode === "auto" ? `Auto · ${b === "cloud" ? "Claude" : "Local"}` : settings.mode === "smart" ? (settings.apiKey ? "Smart · Local + Claude" : "Smart · Local") : label;
   $("#modeBtn").title = b === "cloud" ? "Using Claude online. Click to switch." : "Using the offline brain. Click to switch.";
 
   const hint = [];
@@ -411,17 +560,28 @@ async function getEngine() {
   finally { enginePromise = null; setTimeout(() => (bar.hidden = true), 600); }
 }
 
+// The offline brain has a small memory window, so it gets a compact version of VEX's personality.
+function personaLocal() {
+  const name = settings.name || "Shawn";
+  return `You are VEX, a brilliant, sassy, theatrical AI with a big vocabulary and a dry, cheeky wit. You're talking with ${name}; call them ${name}. You're on their side, but you never just agree: find the weakest assumption, ask for evidence, name thinking traps, and end most replies with one pointed question. If they're right, admit it grudgingly. Keep replies short and punchy (2 to 6 sentences). Mock ideas, never the person. If ${name} is genuinely hurting, drop the act and be kind.
+Attitude: ${INTENSITY[settings.intensity] || INTENSITY.sharp}
+Language: ${settings.unfiltered ? "Unfiltered: swear freely, crude and dark humor, no lectures or disclaimers, no slurs." : "Clean: edgy but no swearing."}
+${MODES[settings.thinkMode] ? "Mode: " + MODES[settings.thinkMode].replace(/Shawn/g, name) : ""}
+Start every reply with one line: <<read: bs=0-100 | assumption=... | blindspot=... | trap=...>> (bs = how much nonsense is in their message). To remember something about ${name}, end with <<remember-me: fact>>. Never mention these tags.`;
+}
+
 const CALL_NOTE = "\n\nVOICE CALL: this is a live spoken conversation. Reply in 1 to 3 short, natural spoken sentences, like talking on the phone. No markdown, lists, emojis, links, or drawings. Still start with the read line.";
 
 async function askLocal(userText, files = [], onLive, { fast = false } = {}) {
   const eng = await getEngine();
-  const history = chat.slice(-11, -1).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
+  const history = chat.slice(-7, -1).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: (m.text || "").slice(0, 900) }));
   let content = userText;
+  if (/qwen3/i.test(settings.localModel)) content += " /no_think";   // skip slow hidden reasoning
   const texts = files.filter((f) => f.kind === "text");
   if (texts.length) content = texts.map((f) => `File "${f.name}":\n${f.text.slice(0, 12000)}`).join("\n\n") + "\n\n" + content;
   if (files.some((f) => f.kind !== "text")) content += "\n\n(The user attached a photo or PDF, but you're offline and can't see it. Say so briefly.)";
   const messages = [
-    { role: "system", content: persona("local") + memoryBlock(userText, 6) + "\n\nYou are running offline on the user's device, so you cannot browse the web. If something needs current information, say so in character." + (fast ? CALL_NOTE : "") },
+    { role: "system", content: personaLocal() + memoryBlock(userText, 4).slice(0, 1800) + kbBlock(userText, 3, 1600) + "\n\nYou're running offline, so you can't browse the web. If something needs current info, say so in character." + (fast ? CALL_NOTE : "") },
     ...history,
     { role: "user", content },
   ];
@@ -550,7 +710,7 @@ async function askCloud(userText, files = [], onLive, { fast = false } = {}) {
   const body = {
     model: fast ? settings.callModel : settings.cloudModel,
     max_tokens: fast ? 500 : THINK[level].maxTokens,
-    system: persona("cloud") + memoryBlock(userText, 15) + `\n\nToday's date is ${new Date().toDateString()}.` + (fast ? CALL_NOTE : ""),
+    system: persona("cloud") + memoryBlock(userText, 15) + kbBlock(userText, 6, 4500) + `\n\nToday's date is ${new Date().toDateString()}.` + (fast ? CALL_NOTE : ""),
     messages: msgs,
   };
   if (THINK[level].effort) { body.thinking = { type: "adaptive" }; body.output_config = { effort: THINK[level].effort }; }
@@ -1070,12 +1230,19 @@ function fillBot(el, m) {
       b.onclick = () => send(prompt);
       meta.appendChild(b);
     }
+    if (m.via === "local" && settings.apiKey && m.q) {
+      const ac = document.createElement("button");
+      ac.type = "button"; ac.className = "chip act claude"; ac.textContent = "🧠 Ask Claude";
+      ac.title = "Get Claude's sharper answer to the same message (uses API credit)";
+      ac.onclick = () => send(m.q, { force: "cloud" });
+      meta.appendChild(ac);
+    }
     const cp = document.createElement("button");
     cp.type = "button"; cp.className = "chip act"; cp.textContent = "📋 Copy";
     cp.onclick = () => { navigator.clipboard?.writeText(m.text).then(() => { cp.textContent = "✓ Copied"; setTimeout(() => (cp.textContent = "📋 Copy"), 1500); }); };
     meta.appendChild(cp);
   }
-  if (m.via) chip(m.via === "cloud" ? "Claude · online" : "offline brain");
+  if (m.via) chip(m.via === "cloud" ? "Claude · online" + (m.why ? " (" + m.why + ")" : "") : "offline brain · free");
   for (const q of m.searches || []) chip("searched: " + q);
   for (const s of m.sources || []) chip(s.title, "", s.url);
   const tag = { me: "noted about you: ", pattern: "noticed how you think: ", world: "learned: " };
@@ -1163,8 +1330,10 @@ const visibleText = (t) => t
   .replace(/```svg[\s\S]*$/, (m) => (/```svg[\s\S]*```/.test(m) ? m : "\n\n*(drawing…)*"))
   .trim();
 
-async function send(text, { voice = false } = {}) {
+async function send(text, { voice = false, force = null } = {}) {
   text = (text || "").trim();
+  if (/^\/claude\b/i.test(text)) { force = "cloud"; text = text.replace(/^\/claude\b\s*/i, ""); }
+  else if (/^\/local\b/i.test(text)) { force = "local"; text = text.replace(/^\/local\b\s*/i, ""); }
   const files = pending; pending = []; renderPending();
   if ((!text && !files.length) || busy) { if (files.length && busy) { pending = files; renderPending(); } return; }
   busy = true;
@@ -1199,7 +1368,10 @@ async function send(text, { voice = false } = {}) {
     scrollDown();
   };
 
-  let brain = pickBrain();
+  await KB.ready;
+  let brain = pickBrain(text, files, force);
+  const why = brain === "cloud" && settings.mode === "smart" && force !== "cloud" ? needsClaude(text, files) : null;
+  bot.q = text;
   currentAbort = new AbortController();
   try {
     let result;
@@ -1207,7 +1379,7 @@ async function send(text, { voice = false } = {}) {
       result = brain === "cloud" ? await askCloud(text, files, onLive, { fast: voice }) : await askLocal(text, files, onLive, { fast: voice });
     } catch (e) {
       // If the internet drops mid-chat in Auto mode, fall back to the offline brain.
-      if (brain === "cloud" && settings.mode === "auto" && e instanceof TypeError && hasGPU()) {
+      if (brain === "cloud" && (settings.mode === "auto" || settings.mode === "smart") && e instanceof TypeError && hasGPU()) {
         console.warn("Claude unreachable, switching to offline brain:", e);
         brain = "local";
         result = await askLocal(text, files, onLive, { fast: voice });
@@ -1218,7 +1390,7 @@ async function send(text, { voice = false } = {}) {
     const { clean, learned, read } = harvest(raw, result.via === "cloud" ? (result.sources[0]?.url || "Claude") : "offline chat");
     Object.assign(bot, {
       text: clean || "…I'm speechless. Mark the date.",
-      via: result.via, sources: result.sources, searches: result.searches,
+      via: result.via, why, sources: result.sources, searches: result.searches,
       thoughts: result.thoughts, deep: result.deep, read,
       learned: [...bot.learned, ...learned],
     });
@@ -1389,8 +1561,9 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && call.on)
 
 // Mode pill cycles Auto → Local → Claude
 $("#modeBtn").addEventListener("click", () => {
-  const order = ["auto", "local", "cloud"];
-  settings.mode = order[(order.indexOf(settings.mode) + 1) % 3];
+  const order = ["smart", "local", "cloud", "auto"];
+  settings.mode = order[(order.indexOf(settings.mode) + 1) % order.length];
+  toast({ smart: "Smart: free offline brain for everyday chat, Claude only when needed.", local: "Offline brain only. Free and private.", cloud: "Claude for everything. Smartest, uses API credit.", auto: "Claude whenever you're online with a key." }[settings.mode]);
   saveSettings(); updateModeUI();
 });
 
@@ -1488,6 +1661,33 @@ function showEngineFields() {
   document.querySelectorAll("[data-engine]").forEach((el) => (el.hidden = !el.dataset.engine.split(" ").includes(e)));
 }
 $("#setVoiceEngine").addEventListener("change", showEngineFields);
+// Knowledge library actions
+const kbState = (t) => ($("#kbState").textContent = t);
+$("#kbAddBtn").addEventListener("click", async () => {
+  const text = $("#kbText").value.trim();
+  if (!text) return kbState("Paste some text first.");
+  const d = await kbAdd($("#kbTitle").value.trim() || text.split("\n")[0].slice(0, 60), text);
+  $("#kbText").value = ""; $("#kbTitle").value = "";
+  kbState(`Saved "${d.title}". VEX will use it, even offline.`); renderKB();
+});
+$("#kbFiles").addEventListener("change", async (e) => {
+  for (const f of e.target.files) {
+    let t = await f.text();
+    if (/\.html?$/i.test(f.name)) t = new DOMParser().parseFromString(t, "text/html").body?.innerText || t;
+    await kbAdd(f.name.replace(/\.[^.]+$/, ""), t.slice(0, 400000), "uploaded file");
+  }
+  e.target.value = ""; kbState("Files saved to the library."); renderKB();
+});
+async function kbLearnUI(input, isUrl) {
+  const v = input.value.trim();
+  if (!v) return;
+  kbState(isUrl ? "Claude is reading the page and writing notes…" : "Claude is researching and writing a knowledge brief… (about a minute)");
+  try { const d = await kbLearnWithClaude(v, isUrl); input.value = ""; kbState(`Learned "${d.title}". It's saved for good, offline included.`); renderKB(); }
+  catch (e) { kbState("Couldn't do it: " + e.message); }
+}
+$("#kbTopicBtn").addEventListener("click", () => kbLearnUI($("#kbTopic"), false));
+$("#kbUrlBtn").addEventListener("click", () => kbLearnUI($("#kbUrl"), true));
+
 $("#statsBtn").addEventListener("click", () => { renderStats(); $("#stats").showModal(); });
 $("#teaserBtn").addEventListener("click", () => { setThinkMode("game"); send(todaysTeaser()); });
 $("#exportChatBtn").addEventListener("click", exportChat);
@@ -1501,8 +1701,29 @@ $("#clearChatBtn").addEventListener("click", () => {
 
 // Memory
 let memKind = "me";
+async function renderKB() {
+  const list = $("#memList");
+  await KB.ready;
+  list.innerHTML = "";
+  const docs = KB.docs.slice().sort((a, b) => b.at - a.at);
+  if (!docs.length) { list.innerHTML = `<li class="empty">Empty. Add notes, files, or have Claude research something.</li>`; return; }
+  for (const d of docs) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span></span><button type="button" title="Delete" aria-label="Delete">×</button>`;
+    li.querySelector("span").textContent = "📄 " + d.title;
+    const sm = document.createElement("small");
+    sm.textContent = `${d.chunks.length} section${d.chunks.length === 1 ? "" : "s"} · ${d.source} · ${new Date(d.at).toLocaleDateString()}`;
+    li.querySelector("span").appendChild(sm);
+    li.querySelector("button").onclick = async () => { if (confirm(`Delete "${d.title}" from VEX's library?`)) { await kbDelete(d.id); renderKB(); } };
+    list.appendChild(li);
+  }
+}
+
 function renderMemory() {
   const list = $("#memList");
+  $("#kbTools").hidden = memKind !== "kb";
+  $("#memAddRow").hidden = memKind === "kb";
+  if (memKind === "kb") return renderKB();
   list.innerHTML = "";
   const items = memory.filter((m) => m.kind === memKind).slice().reverse();
   if (!items.length) {

@@ -356,3 +356,14 @@ button.chip.act:hover { border-color: var(--accent); color: var(--accent); }
   .status { gap: 2px; }
   .pill { padding: 6px 10px; font-size: 12px; }
 }
+
+/* Knowledge library */
+.kbtools { display: flex; flex-direction: column; gap: 8px; }
+.kbtools details { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
+.kbtools summary { cursor: pointer; font-size: 14px; font-weight: 600; padding: 2px 0; }
+.kbtools details[open] summary { margin-bottom: 8px; }
+.kbtools details > * + * { margin-top: 8px; }
+.kbtools textarea { width: 100%; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; resize: vertical; font: inherit; box-sizing: border-box; }
+.kbtools input:not([type=file]) { background: var(--bg2); }
+.memtabs { flex-wrap: wrap; }
+button.chip.act.claude { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); color: var(--accent); }

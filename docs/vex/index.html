@@ -184,6 +184,7 @@
       <label class="field">
         <span>Brain</span>
         <select id="setMode">
+          <option value="smart">Smart: free offline brain for everyday chat, Claude only when needed (recommended)</option>
           <option value="auto">Auto: Claude when online with a key, local otherwise</option>
           <option value="local">Local only (offline, private)</option>
           <option value="cloud">Claude only (needs internet + key)</option>
@@ -351,9 +352,30 @@
         <button type="button" class="memtab on" data-kind="me">About you</button>
         <button type="button" class="memtab" data-kind="pattern">How you think</button>
         <button type="button" class="memtab" data-kind="world">Things it learned</button>
+        <button type="button" class="memtab" data-kind="kb">📚 Knowledge library</button>
       </div>
       <ul id="memList" class="memlist"></ul>
-      <div class="row">
+      <div id="kbTools" class="kbtools" hidden>
+        <details open>
+          <summary>➕ Add notes or an article (free)</summary>
+          <input id="kbTitle" placeholder="Title (e.g. My business plan, Notes on stoicism)">
+          <textarea id="kbText" rows="5" placeholder="Paste any text here: articles, notes, study material, facts about your life or work…"></textarea>
+          <div class="row"><button type="button" id="kbAddBtn" class="ghost">Save to library</button>
+            <label class="ghost filebtn">Upload text files<input id="kbFiles" type="file" multiple accept=".txt,.md,.html,.htm,.json,.csv" hidden></label></div>
+        </details>
+        <details>
+          <summary>🔎 Have Claude research a topic (one-time cost, then free offline)</summary>
+          <div class="row"><input id="kbTopic" class="grow" placeholder="e.g. How the stock market works, Ancient Rome, Negotiation tactics">
+            <button type="button" id="kbTopicBtn" class="ghost">Research</button></div>
+        </details>
+        <details>
+          <summary>🔗 Learn from a link (one-time cost, then free offline)</summary>
+          <div class="row"><input id="kbUrl" class="grow" placeholder="https://… an article or page">
+            <button type="button" id="kbUrlBtn" class="ghost">Learn it</button></div>
+        </details>
+        <p id="kbState" class="muted"></p>
+      </div>
+      <div class="row" id="memAddRow">
         <input id="memNew" placeholder="Teach it something…" class="grow">
         <button type="button" id="memAdd" class="ghost">Add</button>
       </div>
