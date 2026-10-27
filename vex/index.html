@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>VEX</title>
+  <meta name="description" content="VEX: a smug, theatrical AI that exists to challenge how you think.">
+  <meta name="theme-color" content="#07090d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="core small" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <h1>VEX</h1>
+        <p class="tag">Here to disagree with you. Professionally.</p>
+      </div>
+    </div>
+    <div class="status">
+      <button id="modeBtn" class="pill" title="Switch brain">
+        <span class="dot" id="modeDot"></span><span id="modeLabel">Auto</span>
+      </button>
+      <button id="voiceBtn" class="icon-btn" title="Voice off" aria-label="Toggle voice" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path class="mute" d="m16 9.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <button id="memBtn" class="icon-btn" title="What VEX remembers" aria-label="Memory">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4.4 3 5.7V19a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-3.3c1.8-1.3 3-3.3 3-5.7a7 7 0 0 0-7-7Zm-2 15h4m-4-2h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-2.1.1-1.4-.1-1.4 2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2.4-1.4L14.2 3h-4.4l-.4 2.6a7.6 7.6 0 0 0-2.4 1.4l-2.4-1-2 3.4 2 1.6-.1 1.4.1 1.4-2 1.6 2 3.4 2.4-1c.7.6 1.5 1.1 2.4 1.4l.4 2.6h4.4l.4-2.6c.9-.3 1.7-.8 2.4-1.4l2.4 1 2-3.4-2-1.6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="chat" class="chat" aria-live="polite">
+    <section id="intro" class="intro">
+      <div class="core big" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+      <h2>Oh good. A human with an idea.</h2>
+      <p>Tell me what you believe, what you're planning, or what you're sure of. I'll find the cracks. You'll thank me later, or at least stop being wrong sooner.</p>
+      <div class="starters">
+        <button class="starter">I'm going to quit my job and start a business.</button>
+        <button class="starter">Convince me I'm wrong about something.</button>
+        <button class="starter">I think I'm right about this argument with my friend...</button>
+        <button class="starter">Rate my plan for this week.</button>
+        <button class="starter" data-mode="roast">Roast my life choices. Go.</button>
+        <button class="starter" data-mode="game">Give me a riddle you think I can't solve.</button>
+        <button class="starter" data-mode="art">Draw me a self-portrait.</button>
+        <button class="starter" data-mode="story">Start a sci-fi story where I'm the main character.</button>
+      </div>
+      <p class="fine" id="introHint"></p>
+    </section>
+  </main>
+
+  <div id="loadBar" class="loadbar" hidden>
+    <div class="loadtext" id="loadText">Waking up the local brain…</div>
+    <div class="track"><div class="fill" id="loadFill"></div></div>
+  </div>
+
+  <div class="toolbar">
+    <label class="tool sel" title="What kind of conversation">
+      <select id="modeSel" aria-label="Mode">
+        <optgroup label="Think">
+          <option value="challenge">🧠 Challenge me</option>
+          <option value="genius">💡 Genius advisor</option>
+          <option value="debate">⚔️ Debate</option>
+          <option value="socratic">❓ Socratic</option>
+          <option value="devil">😈 Devil's advocate</option>
+          <option value="premortem">🪦 Pre-mortem</option>
+          <option value="factcheck">🔎 Fact-check me</option>
+        </optgroup>
+        <optgroup label="Fun">
+          <option value="roast">🔥 Roast</option>
+          <option value="game">🎲 Games & riddles</option>
+          <option value="rap">🎤 Rap battle</option>
+          <option value="story">📖 Story</option>
+          <option value="art">🎨 Art</option>
+        </optgroup>
+      </select>
+    </label>
+    <label class="tool sel" title="How hard VEX thinks (online brain)">
+      <select id="thinkSel" aria-label="Thinking">
+        <option value="off">⚡ Fast</option>
+        <option value="auto">🧠 Think: auto</option>
+        <option value="deep">🧠🧠 Deep</option>
+        <option value="max">🧠🧠🧠 MAX</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <button type="button" id="talkBtn" class="tool talk" aria-pressed="false" title="Hands-free voice conversation">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-6 9a6 6 0 0 0 12 0m-6 6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Talk</span>
+    </button>
+  </div>
+
+  <div id="pending" class="pending" hidden></div>
+
+  <form id="composer" class="composer" autocomplete="off">
+    <button type="button" id="attachBtn" class="cbtn" title="Attach a photo, PDF, or file" aria-label="Attach">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="m20 11.5-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <input id="fileInput" type="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css" hidden>
+    <textarea id="input" rows="1" placeholder="Say something you're sure of…" aria-label="Message"></textarea>
+    <button type="button" id="micBtn" class="cbtn" title="Speak instead of typing" aria-label="Dictate">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-6 9a6 6 0 0 0 12 0m-6 6v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
+    <button id="sendBtn" class="send" type="submit" aria-label="Send">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 12h14m-6-7 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </form>
+
+  <!-- Hands-free call -->
+  <div id="callOverlay" class="call" hidden data-state="listening">
+    <div class="call-inner">
+      <div class="core huge" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+      <div id="callState" class="call-state">Listening…</div>
+      <div id="callHeard" class="call-heard"></div>
+      <p class="call-tip">Just talk. Interrupt any time. Say "end call" or tap End.</p>
+      <button type="button" id="endCallBtn" class="endcall">End</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <dialog id="settings" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <h3>Settings</h3>
+
+      <label class="field">
+        <span>What VEX calls you</span>
+        <input id="setName" placeholder="Shawn">
+      </label>
+
+      <label class="field">
+        <span>Attitude</span>
+        <select id="setIntensity">
+          <option value="gentle">Gentle: teasing, encouraging</option>
+          <option value="sharp">Sharp: sarcastic and blunt</option>
+          <option value="ruthless">Ruthless: tears your arguments apart</option>
+        </select>
+      </label>
+      <label class="check">
+        <input id="setUnfiltered" type="checkbox">
+        <span>Unfiltered language (VEX can swear)</span>
+      </label>
+      <label class="check">
+        <input id="setShowBS" type="checkbox">
+        <span>Show the BS meter</span>
+      </label>
+      <label class="check">
+        <input id="setShowRead" type="checkbox">
+        <span>Show VEX's thought process ("VEX's read") on replies</span>
+      </label>
+
+      <label class="field">
+        <span>Brain</span>
+        <select id="setMode">
+          <option value="auto">Auto: Claude when online with a key, local otherwise</option>
+          <option value="local">Local only (offline, private)</option>
+          <option value="cloud">Claude only (needs internet + key)</option>
+        </select>
+      </label>
+
+      <fieldset>
+        <legend>Online brain (Claude)</legend>
+        <label class="field">
+          <span>Anthropic API key</span>
+          <input id="setKey" type="password" placeholder="sk-ant-…" spellcheck="false">
+          <small>Stored only in this browser. Get one at console.anthropic.com. Never put it in the code or the repo.</small>
+        </label>
+        <label class="field">
+          <span>Model</span>
+          <select id="setCloudModel">
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest, fast)</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (balanced)</option>
+            <option value="claude-opus-5-5">Claude Opus 5.5 (sharpest, priciest)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Voice-call model (speed matters most)</span>
+          <select id="setCallModel">
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+            <option value="claude-opus-5-5">Claude Opus 5.5 (slowest)</option>
+          </select>
+        </label>
+        <label class="check">
+          <input id="setSearch" type="checkbox">
+          <span>Let VEX search the web and remember what it learns</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Offline brain (runs on your device)</legend>
+        <label class="field">
+          <span>Local model</span>
+          <select id="setLocalModel"></select>
+          <small>Downloads once, then works with no internet. Needs a recent Chrome or Edge (WebGPU). Bigger = smarter but slower.</small>
+        </label>
+        <div class="row">
+          <button type="button" id="preloadBtn" class="ghost">Download offline brain now</button>
+          <span id="cacheState" class="muted"></span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Voice</legend>
+        <label class="check">
+          <input id="setVoiceOn" type="checkbox">
+          <span>VEX speaks its replies out loud</span>
+        </label>
+        <label class="field">
+          <span>Fish Audio API key</span>
+          <input id="setFishKey" type="password" placeholder="sk-fish-…" spellcheck="false">
+          <small>Stored only in this browser. Leave blank to use your device's built-in voice (works offline).</small>
+        </label>
+        <label class="field">
+          <span>Fish Audio voice model ID</span>
+          <input id="setFishVoice" placeholder="e.g. 8ef4a238714b45718ce04243307c57a7" spellcheck="false">
+          <small>The ID from the voice's page on fish.audio.</small>
+        </label>
+        <label class="field">
+          <span>Fish Audio model</span>
+          <select id="setFishModel">
+            <option value="s2.1-pro">s2.1-pro (best quality)</option>
+            <option value="s2.1-pro-free">s2.1-pro-free (free tier)</option>
+            <option value="s2-pro">s2-pro</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Voice server URL (optional)</span>
+          <input id="setFishProxy" placeholder="https://vex-voice.yourname.workers.dev" spellcheck="false">
+          <small>Leave blank for Fish Audio. Use a relay, or your own PC (e.g. <code>http://localhost:8787</code>) for free local voice. See <code>voice-relay/README.md</code>.</small>
+        </label>
+        <div class="row">
+          <button type="button" id="testVoiceBtn" class="ghost">Test voice</button>
+          <span id="voiceState" class="muted"></span>
+        </div>
+      </fieldset>
+
+      <div class="row end">
+        <button type="button" id="clearChatBtn" class="ghost danger">Clear chat</button>
+        <button value="close" class="primary" id="saveSettings">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Memory -->
+  <dialog id="memory" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <h3>What VEX remembers</h3>
+      <p class="muted">Everything here is saved in this browser and used by both brains. VEX adds to it as it learns about you and the world.</p>
+      <div class="memtabs">
+        <button type="button" class="memtab on" data-kind="me">About you</button>
+        <button type="button" class="memtab" data-kind="pattern">How you think</button>
+        <button type="button" class="memtab" data-kind="world">Things it learned</button>
+      </div>
+      <ul id="memList" class="memlist"></ul>
+      <div class="row">
+        <input id="memNew" placeholder="Teach it something…" class="grow">
+        <button type="button" id="memAdd" class="ghost">Add</button>
+      </div>
+      <div class="row end">
+        <button type="button" id="memExport" class="ghost">Back up everything</button>
+        <label class="ghost filebtn">Restore<input id="memImport" type="file" accept="application/json" hidden></label>
+        <button value="close" class="primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

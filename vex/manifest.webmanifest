@@ -1,0 +1,13 @@
+{
+  "name": "VEX",
+  "short_name": "VEX",
+  "description": "A smug, theatrical AI that challenges how you think.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
